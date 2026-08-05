@@ -1,7 +1,7 @@
 WidgetMetadata = {
   id: "forward.bilibili.tv.search",
   title: "B站影视搜索",
-  version: "1.1.0",
+  version: "1.1.1",
   requiredVersion: "0.0.2",
   description: "使用可选的个人 Cookie 搜索 B站电影、电视剧、番剧、国创、综艺和纪录片，并展示官方详情与分集页面。",
   author: "Custom",
@@ -66,9 +66,20 @@ WidgetMetadata = {
 };
 
 var BILIBILI_SEARCH_API = "https://api.bilibili.com/x/web-interface/search/type";
+var BILIBILI_WBI_SEARCH_API = "https://api.bilibili.com/x/web-interface/wbi/search/type";
+var BILIBILI_NAV_API = "https://api.bilibili.com/x/web-interface/nav";
 var BILIBILI_SEASON_API = "https://api.bilibili.com/pgc/view/web/season";
 var BILIBILI_CACHE_PREFIX = "bilibili-tv-detail:";
 var lastBilibiliCookie = "";
+var cachedBilibiliWbiKeys = null;
+var cachedBilibiliWbiKeysAt = 0;
+var BILIBILI_WBI_KEY_TTL = 6 * 60 * 60 * 1000;
+var BILIBILI_WBI_MIXIN_TABLE = [
+  46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,
+  27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13,
+  37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4,
+  22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52,
+];
 
 function sanitizeCookie(value) {
   return String(value || "").replace(/[\r\n]/g, "").trim();
@@ -82,6 +93,130 @@ function bilibiliHeaders(cookie, referer) {
   };
   if (cookie) headers.Cookie = cookie;
   return headers;
+}
+
+function bilibiliMd5(value) {
+  var bytes = [];
+  var text = String(value || "");
+  for (var i = 0; i < text.length; i += 1) bytes.push(text.charCodeAt(i) & 255);
+  var bitLength = bytes.length * 8;
+  bytes.push(128);
+  while (bytes.length % 64 !== 56) bytes.push(0);
+  for (var lengthIndex = 0; lengthIndex < 8; lengthIndex += 1) {
+    bytes.push(Math.floor(bitLength / Math.pow(256, lengthIndex)) & 255);
+  }
+
+  var shifts = [
+    7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
+    5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
+    4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
+    6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
+  ];
+  var constants = [];
+  for (var constantIndex = 0; constantIndex < 64; constantIndex += 1) {
+    constants.push(Math.floor(Math.abs(Math.sin(constantIndex + 1)) * 4294967296) >>> 0);
+  }
+
+  var a0 = 0x67452301;
+  var b0 = 0xefcdab89;
+  var c0 = 0x98badcfe;
+  var d0 = 0x10325476;
+  for (var offset = 0; offset < bytes.length; offset += 64) {
+    var words = [];
+    for (var wordIndex = 0; wordIndex < 16; wordIndex += 1) {
+      var base = offset + wordIndex * 4;
+      words[wordIndex] = (bytes[base] |
+        (bytes[base + 1] << 8) |
+        (bytes[base + 2] << 16) |
+        (bytes[base + 3] << 24)) >>> 0;
+    }
+
+    var a = a0;
+    var b = b0;
+    var c = c0;
+    var d = d0;
+    for (var round = 0; round < 64; round += 1) {
+      var f;
+      var g;
+      if (round < 16) {
+        f = (b & c) | ((~b) & d);
+        g = round;
+      } else if (round < 32) {
+        f = (d & b) | ((~d) & c);
+        g = (5 * round + 1) % 16;
+      } else if (round < 48) {
+        f = b ^ c ^ d;
+        g = (3 * round + 5) % 16;
+      } else {
+        f = c ^ (b | (~d));
+        g = (7 * round) % 16;
+      }
+      var sum = (a + (f >>> 0) + constants[round] + words[g]) >>> 0;
+      var rotated = ((sum << shifts[round]) | (sum >>> (32 - shifts[round]))) >>> 0;
+      a = d;
+      d = c;
+      c = b;
+      b = (b + rotated) >>> 0;
+    }
+    a0 = (a0 + a) >>> 0;
+    b0 = (b0 + b) >>> 0;
+    c0 = (c0 + c) >>> 0;
+    d0 = (d0 + d) >>> 0;
+  }
+
+  function littleEndianHex(word) {
+    var hex = "";
+    for (var byteIndex = 0; byteIndex < 4; byteIndex += 1) {
+      hex += ("0" + ((word >>> (byteIndex * 8)) & 255).toString(16)).slice(-2);
+    }
+    return hex;
+  }
+  return littleEndianHex(a0) + littleEndianHex(b0) + littleEndianHex(c0) + littleEndianHex(d0);
+}
+
+function bilibiliWbiFilename(url) {
+  var filename = String(url || "").split("/").pop().split("?")[0];
+  return filename.split(".")[0];
+}
+
+function bilibiliMixinKey(imgKey, subKey) {
+  var source = String(imgKey || "") + String(subKey || "");
+  return BILIBILI_WBI_MIXIN_TABLE.map(function (index) {
+    return source[index] || "";
+  }).join("").slice(0, 32);
+}
+
+async function loadBilibiliWbiKeys(cookie) {
+  var now = Date.now();
+  if (cachedBilibiliWbiKeys && now - cachedBilibiliWbiKeysAt < BILIBILI_WBI_KEY_TTL) {
+    return cachedBilibiliWbiKeys;
+  }
+  var response = await Widget.http.get(BILIBILI_NAV_API, {
+    headers: bilibiliHeaders(cookie, "https://www.bilibili.com/"),
+  });
+  var body = response && response.data;
+  var wbi = body && body.data && body.data.wbi_img;
+  var imgKey = bilibiliWbiFilename(wbi && wbi.img_url);
+  var subKey = bilibiliWbiFilename(wbi && wbi.sub_url);
+  if (!imgKey || !subKey) throw new Error("无法取得 WBI 密钥");
+  cachedBilibiliWbiKeys = { imgKey: imgKey, subKey: subKey };
+  cachedBilibiliWbiKeysAt = now;
+  return cachedBilibiliWbiKeys;
+}
+
+function signBilibiliWbiParams(params, keys) {
+  var signed = {};
+  Object.keys(params).forEach(function (key) {
+    if (params[key] !== undefined && params[key] !== null) signed[key] = params[key];
+  });
+  signed.wts = Math.floor(Date.now() / 1000);
+  var query = Object.keys(signed).sort().map(function (key) {
+    var value = String(signed[key]).replace(/[!'()*]/g, "");
+    return encodeURIComponent(key) + "=" + encodeURIComponent(value);
+  }).join("&");
+  var mixinKey = bilibiliMixinKey(keys.imgKey, keys.subKey);
+  signed.w_rid = bilibiliMd5(query + mixinKey);
+  return signed;
 }
 
 function cleanText(value) {
@@ -212,6 +347,12 @@ async function search(params = {}) {
   var requestedType = String(params.contentType || "all");
   var types = bilibiliSearchTypes(requestedType);
   lastBilibiliCookie = sanitizeCookie(params.bilibiliCookie);
+  var wbiKeys = null;
+  try {
+    wbiKeys = await loadBilibiliWbiKeys(lastBilibiliCookie);
+  } catch (wbiError) {
+    console.warn("[B站搜索] WBI 初始化失败，使用兼容接口:", wbiError.message || wbiError);
+  }
 
   var rows = [];
   var successfulRequests = 0;
@@ -219,13 +360,19 @@ async function search(params = {}) {
 
   for (var i = 0; i < types.length; i += 1) {
     try {
-      var response = await Widget.http.get(BILIBILI_SEARCH_API, {
+      var requestParams = {
+        search_type: types[i],
+        keyword: keyword,
+        page: page,
+      };
+      var searchApi = BILIBILI_SEARCH_API;
+      if (wbiKeys) {
+        requestParams = signBilibiliWbiParams(requestParams, wbiKeys);
+        searchApi = BILIBILI_WBI_SEARCH_API;
+      }
+      var response = await Widget.http.get(searchApi, {
         headers: bilibiliHeaders(lastBilibiliCookie, "https://search.bilibili.com/"),
-        params: {
-          search_type: types[i],
-          keyword: keyword,
-          page: page,
-        },
+        params: requestParams,
       });
       var body = response && response.data;
       if (!body || Number(body.code) !== 0) {

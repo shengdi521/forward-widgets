@@ -8,7 +8,7 @@
       "title": "B站影视搜索",
       "description": "使用可选的个人 Cookie 搜索 B站电影、电视剧、番剧、国创、综艺和纪录片，并展示官方详情与分集页面。",
       "requiredVersion": "0.0.2",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "author": "Custom",
       "url": "https://raw.githubusercontent.com/shengdi521/forward-widgets/main/widgets/bilibili-tv-search.js"
     },

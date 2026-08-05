@@ -48,6 +48,19 @@ const sandbox = {
     http: {
       get: async (url, options) => {
         calls.push({ url, options });
+        if (url.includes("/x/web-interface/nav")) {
+          return {
+            data: {
+              code: 0,
+              data: {
+                wbi_img: {
+                  img_url: "https://i0.hdslb.com/bfs/wbi/abcdefghijklmnopqrstuvwxyz123456.png",
+                  sub_url: "https://i0.hdslb.com/bfs/wbi/654321zyxwvutsrqponmlkjihgfedcba.png",
+                },
+              },
+            },
+          };
+        }
         if (url.includes("/search/type")) {
           const result = options.params.search_type === "media_ft" ? [movieRow] : [searchRow];
           return { data: { code: 0, message: "OK", data: { result } } };
@@ -124,7 +137,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "forward.bilibili.tv.search");
   assert.equal(sandbox.WidgetMetadata.title, "B站影视搜索");
-  assert.equal(sandbox.WidgetMetadata.version, "1.1.0");
+  assert.equal(sandbox.WidgetMetadata.version, "1.1.1");
   assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.2");
   assert.equal(sandbox.WidgetMetadata.modules.length, 1);
   assert.equal(sandbox.WidgetMetadata.modules[0].id, "searchBilibiliTv");
@@ -132,6 +145,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(sandbox.WidgetMetadata.globalParams[0].name, "bilibiliCookie");
   assert.equal(sandbox.WidgetMetadata.globalParams[0].placeholders, undefined);
   assert.equal(sandbox.WidgetMetadata.search.functionName, "search");
+  assert.equal(sandbox.bilibiliMd5("abc"), "900150983cd24fb0d6963f7d28e17f72");
 
   const results = await sandbox.search({
     keyword: "凡人修仙传",
@@ -141,13 +155,18 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   });
 
   assert.equal(calls.filter((call) => call.url.includes("/search/type")).length, 2);
+  assert.equal(calls.filter((call) => call.url.includes("/x/web-interface/nav")).length, 1);
+  assert.ok(calls.filter((call) => call.url.includes("/search/type")).every((call) => call.url.includes("/wbi/")));
   assert.deepEqual(
     calls.filter((call) => call.url.includes("/search/type")).map((call) => call.options.params.search_type),
     ["media_bangumi", "media_ft"],
   );
-  assert.equal(calls[0].options.params.keyword, "凡人修仙传");
-  assert.equal(calls[0].options.params.page, 2);
-  assert.equal(calls[0].options.headers.Cookie, TEST_COOKIE);
+  const firstSearchCall = calls.find((call) => call.url.includes("/search/type"));
+  assert.equal(firstSearchCall.options.params.keyword, "凡人修仙传");
+  assert.equal(firstSearchCall.options.params.page, 2);
+  assert.equal(firstSearchCall.options.headers.Cookie, TEST_COOKIE);
+  assert.match(firstSearchCall.options.params.w_rid, /^[a-f0-9]{32}$/);
+  assert.ok(Number(firstSearchCall.options.params.wts) > 0);
 
   assert.equal(results.length, 2, "应同时返回番剧/国创和电影");
   assert.equal(results[0].title, "凡人修仙传");
@@ -193,6 +212,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   });
   assert.equal(legacyMediaResults.length, 1, "应兼容 1.0.1 保存的影视筛选值");
   assert.equal(calls.filter((call) => call.url.includes("/search/type")).length, 4);
+  assert.equal(calls.filter((call) => call.url.includes("/x/web-interface/nav")).length, 1, "WBI 密钥应复用");
 
   const movieDetail = await sandbox.loadDetail(movieResults[0].link);
   assert.equal(movieDetail.mediaType, "movie");
