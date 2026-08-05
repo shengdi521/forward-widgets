@@ -13,6 +13,8 @@ https://raw.githubusercontent.com/shengdi521/forward-widgets/main/forward-widget
 
 在手机或 iPad 的 Forward 中添加上述订阅地址，即可看到两个独立模块。
 
+全局搜索仅注册一套轻量的“关键词 + 页码”参数，避免模块内重复搜索入口和内容类型筛选表单在中文输入法提交时触发搜索框重建。电影、电视剧、动漫、综艺和纪录片仍会在同一搜索结果中返回。
+
 ## Cookie 安全
 
 仓库和模块源码不包含任何账号 Cookie。请分别在各设备的 Forward 模块参数中填写自己的完整 Cookie；不要将 Cookie 提交到 GitHub、Issue 或聊天记录。

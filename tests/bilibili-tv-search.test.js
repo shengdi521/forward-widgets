@@ -193,9 +193,9 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "forward.bilibili.tv.search");
   assert.equal(sandbox.WidgetMetadata.title, "B站影视搜索");
-  assert.equal(sandbox.WidgetMetadata.version, "1.3.0");
+  assert.equal(sandbox.WidgetMetadata.version, "1.3.1");
   assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.2");
-  assert.equal(sandbox.WidgetMetadata.modules.length, 3);
+  assert.equal(sandbox.WidgetMetadata.modules.length, 2);
   assert.equal(sandbox.WidgetMetadata.modules[0].id, "loadResource");
   assert.equal(sandbox.WidgetMetadata.modules[0].functionName, "loadResource");
   assert.equal(sandbox.WidgetMetadata.modules[0].type, "stream");
@@ -203,11 +203,14 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(sandbox.WidgetMetadata.modules[1].id, "loadSubtitle");
   assert.equal(sandbox.WidgetMetadata.modules[1].functionName, "loadSubtitle");
   assert.equal(sandbox.WidgetMetadata.modules[1].type, "subtitle");
-  assert.equal(sandbox.WidgetMetadata.modules[2].id, "searchBilibiliTv");
-  assert.equal(sandbox.WidgetMetadata.modules[2].functionName, "search");
+  assert.equal(sandbox.WidgetMetadata.modules.some((module) => module.functionName === "search"), false);
   assert.equal(sandbox.WidgetMetadata.globalParams[0].name, "bilibiliCookie");
   assert.equal(sandbox.WidgetMetadata.globalParams[0].placeholders, undefined);
   assert.equal(sandbox.WidgetMetadata.search.functionName, "search");
+  assert.deepEqual(
+    Array.from(sandbox.WidgetMetadata.search.params, (param) => param.name),
+    ["keyword", "page"],
+  );
   assert.equal(sandbox.bilibiliMd5("abc"), "900150983cd24fb0d6963f7d28e17f72");
 
   const results = await sandbox.search({
