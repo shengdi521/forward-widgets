@@ -8,18 +8,18 @@
       "title": "B站影视搜索",
       "description": "使用可选的个人 Cookie 搜索并在线观看 B站官方影视；自动请求账号可达的最高清晰度，并加载可用的官方字幕。",
       "requiredVersion": "0.0.2",
-      "version": "1.3.1",
+      "version": "1.4.0",
       "author": "Custom",
-      "url": "https://raw.githubusercontent.com/shengdi521/forward-widgets/main/widgets/bilibili-tv-search.js"
+      "url": "https://raw.githubusercontent.com/shengdi521/forward-widgets/main/widgets/bilibili-tv-search.js?v=1.4.0"
     },
     {
       "id": "forward.iqiyi.tv.search",
       "title": "爱奇艺影视搜索",
       "description": "使用可选的个人 Cookie 搜索并在线观看爱奇艺官方影视；自动优先账号可达的最高清晰度，并支持可用音轨和字幕切换。",
       "requiredVersion": "0.0.2",
-      "version": "1.3.1",
+      "version": "1.4.0",
       "author": "Custom",
-      "url": "https://raw.githubusercontent.com/shengdi521/forward-widgets/main/widgets/iqiyi-tv-search.js"
+      "url": "https://raw.githubusercontent.com/shengdi521/forward-widgets/main/widgets/iqiyi-tv-search.js?v=1.4.0"
     }
   ]
 }

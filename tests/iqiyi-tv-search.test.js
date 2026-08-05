@@ -192,9 +192,9 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "forward.iqiyi.tv.search");
   assert.equal(sandbox.WidgetMetadata.title, "爱奇艺影视搜索");
-  assert.equal(sandbox.WidgetMetadata.version, "1.3.1");
+  assert.equal(sandbox.WidgetMetadata.version, "1.4.0");
   assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.2");
-  assert.equal(sandbox.WidgetMetadata.modules.length, 2);
+  assert.equal(sandbox.WidgetMetadata.modules.length, 3);
   assert.equal(sandbox.WidgetMetadata.modules[0].id, "loadResource");
   assert.equal(sandbox.WidgetMetadata.modules[0].functionName, "loadResource");
   assert.equal(sandbox.WidgetMetadata.modules[0].type, "stream");
@@ -202,13 +202,20 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(sandbox.WidgetMetadata.modules[1].id, "loadSubtitle");
   assert.equal(sandbox.WidgetMetadata.modules[1].functionName, "loadSubtitle");
   assert.equal(sandbox.WidgetMetadata.modules[1].type, "subtitle");
-  assert.equal(sandbox.WidgetMetadata.modules.some((module) => module.functionName === "search"), false);
+  assert.equal(sandbox.WidgetMetadata.modules[2].id, "searchCatalog");
+  assert.equal(sandbox.WidgetMetadata.modules[2].functionName, "search");
+  assert.equal(sandbox.WidgetMetadata.modules[2].cacheDuration, 0);
+  assert.deepEqual(
+    Array.from(sandbox.WidgetMetadata.modules[2].params, (param) => param.name),
+    ["keyword"],
+  );
   assert.equal(sandbox.WidgetMetadata.globalParams[0].name, "iqiyiCookie");
   assert.equal(sandbox.WidgetMetadata.globalParams[0].placeholders, undefined);
   assert.deepEqual(
     Array.from(sandbox.WidgetMetadata.search.params, (param) => param.name),
-    ["keyword", "page"],
+    ["keyword"],
   );
+  await assert.rejects(() => sandbox.search({ keyword: "  " }), /请输入要搜索的影视名称/);
 
   const results = await sandbox.search({
     keyword: "莲花楼",
@@ -232,7 +239,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(tv.albumInfo, undefined);
   assert.equal(tv.stills, undefined);
   assert.equal(movie.title, "流浪地球2");
-  assert.equal(movie.id, "iqiyi-album:7292991076670500");
+  assert.equal(movie.id, "https://www.iqiyi.com/a_7292991076670500.html");
   assert.equal(movie.mediaType, "movie");
   assert.equal(movie.rating, 9.0);
   assert.equal(movie.releaseDate, "2023-01-22");
@@ -241,12 +248,22 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.match(movie.episodeItems[0].link, /^iqiyi-play:7292991076670500:/);
   assert.ok(!JSON.stringify(Array.from(stored.values())).includes(TEST_COOKIE), "缓存不得包含 Cookie");
 
+  const directResources = await sandbox.loadResource({
+    link: tv.episodeItems[0].link,
+    iqiyiCookie: TEST_COOKIE,
+  });
+  assert.equal(directResources.length, 4, "搜索结果中的分集应能直接起播");
+  assert.match(directResources[0].name, /账号当前最高/);
+
   const movieOnly = await sandbox.search({
     keyword: "流浪地球",
     page: 1,
     contentType: "movie",
     iqiyiCookie: TEST_COOKIE,
   });
+  const searchCalls = calls.filter((call) => call.url.includes("/search/homePageV3"));
+  assert.equal(searchCalls.length, 2);
+  assert.equal(searchCalls[1].options.params.key, "流浪地球", "第二次搜索必须使用新关键词");
   assert.equal(movieOnly.length, 1);
   assert.equal(movieOnly[0].mediaType, "movie");
   const movieDetail = await sandbox.loadDetail(movieOnly[0].link);
@@ -271,7 +288,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
     link: detail.episodeItems[0].link,
     iqiyiCookie: TEST_COOKIE,
   });
-  const playCalls = calls.filter((call) => call.url.includes("/jp/tmts/"));
+  const playCalls = calls.filter((call) => call.url.includes("/jp/tmts/")).slice(-2);
   const playCall = playCalls[0];
   assert.match(playCall.url, /\/8010127344745600\/0d2705c1ebed7831f58740f5149ceeee\/$/);
   assert.equal(playCall.options.params.tvid, "8010127344745600");
