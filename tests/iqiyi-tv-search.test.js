@@ -29,6 +29,8 @@ function album(overrides = {}) {
       {
         title: "莲花楼 第01集",
         number: "1",
+        qipuId: 8010127344745600,
+        playUrl: "qips://tvid=8010127344745600;vid=0d2705c1ebed7831f58740f5149ceeee;ischarge=false;",
         pageUrl: "http://www.iqiyi.com/v_25ltrdm1rl8.html",
         img: "http://pic.iqiyipic.com/ep1.jpg",
       },
@@ -58,6 +60,9 @@ const sandbox = {
                       qipuId: 7292991076670500,
                       channel: "电影,1",
                       pageUrl: null,
+                      playUrl: "qips://tvid=7292991076670500;vid=3962ec5ac0f8d8fc449b6a3c089de70a;ischarge=true;",
+                      paymark: 1,
+                      firstVideoIsVip: true,
                       videos: [],
                       rating: 9.0,
                       releaseTime: { value: "2023-01-22" },
@@ -107,6 +112,7 @@ const sandbox = {
                 epsodelist: [
                   {
                     tvId: 8010127344745600,
+                    vid: "0d2705c1ebed7831f58740f5149ceeee",
                     name: "莲花楼第1集",
                     playUrl: "http://www.iqiyi.com/v_25ltrdm1rl8.html",
                     imageUrl: "http://pic.iqiyipic.com/ep1.jpg",
@@ -119,6 +125,7 @@ const sandbox = {
                   },
                   {
                     tvId: 2,
+                    vid: "11111111111111111111111111111111",
                     name: "莲花楼第2集",
                     playUrl: "https://www.iqiyi.com/v_episode2.html",
                     imageUrl: "https://pic.iqiyipic.com/ep2.jpg",
@@ -128,6 +135,28 @@ const sandbox = {
                 ],
               },
             },
+          };
+        }
+        if (url.includes("/jp/tmts/")) {
+          return {
+            data: "var tvInfoJs=" + JSON.stringify({
+              code: "A00000",
+              data: {
+                vidl: [
+                  {
+                    vd: 18,
+                    screenSize: "1920x1080",
+                    fileFormat: "H265",
+                    m3utx: "http://mus.video.iqiyi.com/video-h265.m3u8?token=h265",
+                  },
+                  {
+                    vd: 4,
+                    screenSize: "1280x720",
+                    m3utx: "https://mus.video.iqiyi.com/video-h264.m3u8?token=h264",
+                  },
+                ],
+              },
+            }),
           };
         }
         throw new Error("unmocked URL: " + url);
@@ -147,11 +176,15 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "forward.iqiyi.tv.search");
   assert.equal(sandbox.WidgetMetadata.title, "爱奇艺影视搜索");
-  assert.equal(sandbox.WidgetMetadata.version, "1.1.0");
+  assert.equal(sandbox.WidgetMetadata.version, "1.2.0");
   assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.2");
-  assert.equal(sandbox.WidgetMetadata.modules.length, 1);
-  assert.equal(sandbox.WidgetMetadata.modules[0].id, "searchIqiyiTv");
-  assert.equal(sandbox.WidgetMetadata.modules[0].functionName, "search");
+  assert.equal(sandbox.WidgetMetadata.modules.length, 2);
+  assert.equal(sandbox.WidgetMetadata.modules[0].id, "loadResource");
+  assert.equal(sandbox.WidgetMetadata.modules[0].functionName, "loadResource");
+  assert.equal(sandbox.WidgetMetadata.modules[0].type, "stream");
+  assert.equal(sandbox.WidgetMetadata.modules[0].cacheDuration, 0);
+  assert.equal(sandbox.WidgetMetadata.modules[1].id, "searchIqiyiTv");
+  assert.equal(sandbox.WidgetMetadata.modules[1].functionName, "search");
   assert.equal(sandbox.WidgetMetadata.globalParams[0].name, "iqiyiCookie");
   assert.equal(sandbox.WidgetMetadata.globalParams[0].placeholders, undefined);
 
@@ -172,6 +205,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(tv.type, "url");
   assert.equal(tv.mediaType, "tv");
   assert.equal(tv.episodeItems.length, 1);
+  assert.match(tv.episodeItems[0].link, /^iqiyi-play:8010127344745600:/);
   assert.equal(tv.peoples.length, 2);
   assert.equal(tv.albumInfo, undefined);
   assert.equal(tv.stills, undefined);
@@ -181,6 +215,8 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(movie.rating, 9.0);
   assert.equal(movie.releaseDate, "2023-01-22");
   assert.equal(movie.durationText, "02:53:11");
+  assert.equal(movie.episodeItems.length, 1);
+  assert.match(movie.episodeItems[0].link, /^iqiyi-play:7292991076670500:/);
   assert.ok(!JSON.stringify(Array.from(stored.values())).includes(TEST_COOKIE), "缓存不得包含 Cookie");
 
   const movieOnly = await sandbox.search({
@@ -204,9 +240,32 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(detail.episodeItems.length, 2);
   assert.equal(detail.episodeItems[0].durationText, "46:07");
   assert.match(detail.episodeItems[0].id, /^https:\/\//);
+  assert.match(detail.episodeItems[0].link, /^iqiyi-play:8010127344745600:/);
   assert.match(detail.episodeItems[1].description, /会员内容/);
   assert.equal(detail.recommendations, undefined);
   assert.equal(await sandbox.loadDetail("bilibili:1"), null);
+
+  const resources = await sandbox.loadResource({
+    link: detail.episodeItems[0].link,
+    iqiyiCookie: TEST_COOKIE,
+  });
+  const playCall = calls.find((call) => call.url.includes("/jp/tmts/"));
+  assert.match(playCall.url, /\/8010127344745600\/0d2705c1ebed7831f58740f5149ceeee\/$/);
+  assert.equal(playCall.options.params.tvid, "8010127344745600");
+  assert.equal(playCall.options.params.vid, "0d2705c1ebed7831f58740f5149ceeee");
+  assert.equal(playCall.options.params.src, "76f90cbd92f94a2e925d83e8ccd22cb7");
+  assert.equal(
+    playCall.options.params.sc,
+    sandbox.iqiyiMd5(String(playCall.options.params.t) + "d5fb4bd9d50c4be6948c97edd7254b0e" + "8010127344745600"),
+  );
+  assert.equal(playCall.options.headers.Cookie, TEST_COOKIE);
+  assert.equal(resources.length, 2);
+  assert.match(resources[0].name, /720P/);
+  assert.match(resources[0].name, /H\.264/);
+  assert.match(resources[0].url, /^https:\/\//);
+  assert.equal(resources[0].playerType, "app");
+  assert.equal(resources[0].customHeaders.Cookie, undefined, "Cookie 不得发送给视频 CDN");
+  assert.equal((await sandbox.loadResource({ link: "bilibili-play:1:2:3:4" })).length, 0);
 
   console.log("OK iqiyi-tv-search", {
     results: results.length,
