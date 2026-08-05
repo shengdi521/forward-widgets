@@ -1,7 +1,7 @@
 WidgetMetadata = {
   id: "forward.iqiyi.tv.search",
   title: "爱奇艺影视搜索",
-  version: "1.3.0",
+  version: "1.3.1",
   requiredVersion: "0.0.2",
   description: "使用可选的个人 Cookie 搜索并在线观看爱奇艺官方影视；自动优先账号可达的最高清晰度，并支持可用音轨和字幕切换。",
   author: "Custom",
@@ -32,50 +32,12 @@ WidgetMetadata = {
       cacheDuration: 0,
       params: [],
     },
-    {
-      id: "searchIqiyiTv",
-      title: "搜索爱奇艺影视",
-      functionName: "search",
-      cacheDuration: 300,
-      params: [
-        { name: "keyword", title: "影视名称", type: "input" },
-        {
-          name: "contentType",
-          title: "内容类型",
-          type: "enumeration",
-          value: "all",
-          enumOptions: [
-            { title: "全部", value: "all" },
-            { title: "电影", value: "movie" },
-            { title: "电视剧", value: "tv" },
-            { title: "动漫", value: "anime" },
-            { title: "综艺", value: "variety" },
-            { title: "纪录片", value: "documentary" },
-          ],
-        },
-        { name: "page", title: "页码", type: "page" },
-      ],
-    },
   ],
   search: {
     title: "搜索爱奇艺影视",
     functionName: "search",
     params: [
       { name: "keyword", title: "影视名称", type: "input" },
-      {
-        name: "contentType",
-        title: "内容类型",
-        type: "enumeration",
-        value: "all",
-        enumOptions: [
-          { title: "全部", value: "all" },
-          { title: "电影", value: "movie" },
-          { title: "电视剧", value: "tv" },
-          { title: "动漫", value: "anime" },
-          { title: "综艺", value: "variety" },
-          { title: "纪录片", value: "documentary" },
-        ],
-      },
       { name: "page", title: "页码", type: "page" },
     ],
   },
@@ -346,7 +308,7 @@ function readCachedDetail(link) {
 }
 
 async function search(params = {}) {
-  var keyword = String(params.keyword || "").trim();
+  var keyword = String(params.keyword || params.query || params.title || "").trim();
   if (!keyword) return [];
   var page = Math.max(1, Number(params.page || 1));
   var requestedType = String(params.contentType || "all");

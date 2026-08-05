@@ -1,7 +1,7 @@
 WidgetMetadata = {
   id: "forward.bilibili.tv.search",
   title: "B站影视搜索",
-  version: "1.3.0",
+  version: "1.3.1",
   requiredVersion: "0.0.2",
   description: "使用可选的个人 Cookie 搜索并在线观看 B站官方影视；自动请求账号可达的最高清晰度，并加载可用的官方字幕。",
   author: "Custom",
@@ -32,50 +32,12 @@ WidgetMetadata = {
       cacheDuration: 0,
       params: [],
     },
-    {
-      id: "searchBilibiliTv",
-      title: "搜索 B站影视",
-      functionName: "search",
-      cacheDuration: 300,
-      params: [
-        { name: "keyword", title: "影视名称", type: "input" },
-        {
-          name: "contentType",
-          title: "内容类型",
-          type: "enumeration",
-          value: "all",
-          enumOptions: [
-            { title: "全部", value: "all" },
-            { title: "电影", value: "movie" },
-            { title: "电视剧", value: "tv" },
-            { title: "番剧/国创", value: "anime" },
-            { title: "综艺", value: "variety" },
-            { title: "纪录片", value: "documentary" },
-          ],
-        },
-        { name: "page", title: "页码", type: "page" },
-      ],
-    },
   ],
   search: {
     title: "搜索 B站影视",
     functionName: "search",
     params: [
       { name: "keyword", title: "影视名称", type: "input" },
-      {
-        name: "contentType",
-        title: "内容类型",
-        type: "enumeration",
-        value: "all",
-        enumOptions: [
-          { title: "全部", value: "all" },
-          { title: "电影", value: "movie" },
-          { title: "电视剧", value: "tv" },
-          { title: "番剧/国创", value: "anime" },
-          { title: "综艺", value: "variety" },
-          { title: "纪录片", value: "documentary" },
-        ],
-      },
       { name: "page", title: "页码", type: "page" },
     ],
   },
@@ -358,7 +320,7 @@ function readCachedDetail(link) {
 }
 
 async function search(params = {}) {
-  var keyword = String(params.keyword || "").trim();
+  var keyword = String(params.keyword || params.query || params.title || "").trim();
   if (!keyword) return [];
 
   var page = Math.max(1, Number(params.page || 1));
@@ -372,14 +334,10 @@ async function search(params = {}) {
     console.warn("[B站搜索] WBI 初始化失败，使用兼容接口:", wbiError.message || wbiError);
   }
 
-  var rows = [];
-  var successfulRequests = 0;
-  var errors = [];
-
-  for (var i = 0; i < types.length; i += 1) {
+  var requestResults = await Promise.all(types.map(async function (searchType) {
     try {
       var requestParams = {
-        search_type: types[i],
+        search_type: searchType,
         keyword: keyword,
         page: page,
       };
@@ -396,13 +354,25 @@ async function search(params = {}) {
       if (!body || Number(body.code) !== 0) {
         throw new Error(body && body.message ? body.message : "空响应");
       }
-      successfulRequests += 1;
       var result = body.data && Array.isArray(body.data.result) ? body.data.result : [];
-      rows = rows.concat(result);
+      return { type: searchType, rows: result };
     } catch (error) {
-      errors.push(types[i] + ": " + (error.message || error));
-      console.error("[B站搜索] 请求失败:", types[i], error.message || error);
+      console.error("[B站搜索] 请求失败:", searchType, error.message || error);
+      return { type: searchType, error: error.message || String(error), rows: [] };
     }
+  }));
+
+  var rows = [];
+  var successfulRequests = 0;
+  var errors = [];
+  for (var resultIndex = 0; resultIndex < requestResults.length; resultIndex += 1) {
+    var requestResult = requestResults[resultIndex];
+    if (requestResult.error) {
+      errors.push(requestResult.type + ": " + requestResult.error);
+      continue;
+    }
+    successfulRequests += 1;
+    rows = rows.concat(requestResult.rows);
   }
 
   if (!successfulRequests) {
