@@ -1,23 +1,23 @@
 {
   "title": "shengdi521 Forward Widgets",
-  "description": "B站与爱奇艺电视剧在线搜索模块",
+  "description": "B站与爱奇艺全影视在线搜索模块",
   "icon": "https://assets.vvebo.vip/scripts/icon.png",
   "widgets": [
     {
       "id": "forward.bilibili.tv.search",
-      "title": "B站电视剧搜索",
-      "description": "使用可选的个人 Cookie 搜索 B站番剧、国创和影视内容，并展示官方详情与分集页面。",
+      "title": "B站影视搜索",
+      "description": "使用可选的个人 Cookie 搜索 B站电影、电视剧、番剧、国创、综艺和纪录片，并展示官方详情与分集页面。",
       "requiredVersion": "0.0.2",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "author": "Custom",
       "url": "https://raw.githubusercontent.com/shengdi521/forward-widgets/main/widgets/bilibili-tv-search.js"
     },
     {
       "id": "forward.iqiyi.tv.search",
-      "title": "爱奇艺电视剧搜索",
-      "description": "使用可选的个人 Cookie 搜索爱奇艺站内电视剧，并展示官方详情与分集页面。",
+      "title": "爱奇艺影视搜索",
+      "description": "使用可选的个人 Cookie 搜索爱奇艺站内电影、电视剧、动漫、综艺和纪录片，并展示官方详情与分集页面。",
       "requiredVersion": "0.0.2",
-      "version": "1.0.1",
+      "version": "1.1.0",
       "author": "Custom",
       "url": "https://raw.githubusercontent.com/shengdi521/forward-widgets/main/widgets/iqiyi-tv-search.js"
     }

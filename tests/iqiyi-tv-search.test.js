@@ -51,8 +51,49 @@ const sandbox = {
               data: {
                 templates: [
                   { template: 101, albumInfo: album() },
+                  {
+                    template: 103,
+                    albumInfo: album({
+                      title: "流浪地球2",
+                      qipuId: 7292991076670500,
+                      channel: "电影,1",
+                      pageUrl: null,
+                      videos: [],
+                      rating: 9.0,
+                      releaseTime: { value: "2023-01-22" },
+                      timeLength: { value: "02:53:11" },
+                    }),
+                  },
+                  {
+                    template: 101,
+                    albumInfo: album({
+                      title: "航拍中国 第一季",
+                      qipuId: 5821016744680001,
+                      channel: "纪录片,3",
+                      pageUrl: "https://www.iqiyi.com/v_documentary.html",
+                    }),
+                  },
+                  {
+                    template: 102,
+                    albumInfo: album({
+                      title: "奔跑吧第10季",
+                      qipuId: 8755339415567901,
+                      channel: "综艺,6",
+                      pageUrl: "https://www.iqiyi.com/v_variety.html",
+                    }),
+                  },
+                  {
+                    template: 101,
+                    albumInfo: album({
+                      title: "斗罗大陆4终极斗罗",
+                      qipuId: 4499849593516501,
+                      channel: "动漫,4",
+                      pageUrl: "https://www.iqiyi.com/v_anime.html",
+                    }),
+                  },
+                  { template: 101, albumInfo: album() },
                   { template: 101, albumInfo: album({ qipuId: 99, siteId: "qq", siteName: "腾讯" }) },
-                  { template: 108, albumInfo: album({ qipuId: 100, channel: "片花,10" }) },
+                  { template: 108, albumInfo: album({ qipuId: 100, channel: "电影,1" }) },
                 ],
               },
             },
@@ -105,7 +146,8 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "forward.iqiyi.tv.search");
-  assert.equal(sandbox.WidgetMetadata.version, "1.0.1");
+  assert.equal(sandbox.WidgetMetadata.title, "爱奇艺影视搜索");
+  assert.equal(sandbox.WidgetMetadata.version, "1.1.0");
   assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.2");
   assert.equal(sandbox.WidgetMetadata.modules.length, 1);
   assert.equal(sandbox.WidgetMetadata.modules[0].id, "searchIqiyiTv");
@@ -116,24 +158,44 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   const results = await sandbox.search({
     keyword: "莲花楼",
     page: 3,
+    contentType: "all",
     iqiyiCookie: TEST_COOKIE,
   });
 
   assert.equal(calls[0].options.params.key, "莲花楼");
   assert.equal(calls[0].options.params.pageNum, 3);
   assert.equal(calls[0].options.headers.Cookie, TEST_COOKIE);
-  assert.equal(results.length, 1, "只保留爱奇艺站内电视剧");
-  assert.equal(results[0].title, "莲花楼");
-  assert.equal(results[0].type, "url");
-  assert.equal(results[0].mediaType, "tv");
-  assert.equal(results[0].link, "iqiyi:8077509274258301");
-  assert.equal(results[0].episodeItems.length, 1);
-  assert.equal(results[0].peoples.length, 2);
-  assert.equal(results[0].albumInfo, undefined);
-  assert.equal(results[0].stills, undefined);
+  assert.equal(results.length, 5, "应保留五类爱奇艺站内长视频并去重");
+  const tv = results.find((item) => item.link === "iqiyi:8077509274258301");
+  const movie = results.find((item) => item.link === "iqiyi:7292991076670500");
+  assert.equal(tv.title, "莲花楼");
+  assert.equal(tv.type, "url");
+  assert.equal(tv.mediaType, "tv");
+  assert.equal(tv.episodeItems.length, 1);
+  assert.equal(tv.peoples.length, 2);
+  assert.equal(tv.albumInfo, undefined);
+  assert.equal(tv.stills, undefined);
+  assert.equal(movie.title, "流浪地球2");
+  assert.equal(movie.id, "iqiyi-album:7292991076670500");
+  assert.equal(movie.mediaType, "movie");
+  assert.equal(movie.rating, 9.0);
+  assert.equal(movie.releaseDate, "2023-01-22");
+  assert.equal(movie.durationText, "02:53:11");
   assert.ok(!JSON.stringify(Array.from(stored.values())).includes(TEST_COOKIE), "缓存不得包含 Cookie");
 
-  const detail = await sandbox.loadDetail(results[0].link);
+  const movieOnly = await sandbox.search({
+    keyword: "流浪地球",
+    page: 1,
+    contentType: "movie",
+    iqiyiCookie: TEST_COOKIE,
+  });
+  assert.equal(movieOnly.length, 1);
+  assert.equal(movieOnly[0].mediaType, "movie");
+  const movieDetail = await sandbox.loadDetail(movieOnly[0].link);
+  assert.equal(movieDetail.title, "流浪地球2");
+  assert.equal(calls.filter((call) => call.url.includes("/avlistinfo")).length, 0);
+
+  const detail = await sandbox.loadDetail(tv.link);
   const detailCall = calls.find((call) => call.url.includes("/avlistinfo"));
   assert.equal(detailCall.options.params.aid, "8077509274258301");
   assert.equal(detailCall.options.params.size, 200);
@@ -148,7 +210,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 
   console.log("OK iqiyi-tv-search", {
     results: results.length,
-    filteredNonIqiyi: 2,
+    categories: 5,
     episodes: detail.episodeItems.length,
   });
 })().catch((error) => {
