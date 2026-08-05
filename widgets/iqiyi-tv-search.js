@@ -1,9 +1,9 @@
 WidgetMetadata = {
   id: "forward.iqiyi.tv.search",
   title: "爱奇艺影视搜索",
-  version: "1.2.0",
+  version: "1.3.0",
   requiredVersion: "0.0.2",
-  description: "使用可选的个人 Cookie 搜索并在线观看爱奇艺官方电影、电视剧、动漫、综艺和纪录片。",
+  description: "使用可选的个人 Cookie 搜索并在线观看爱奇艺官方影视；自动优先账号可达的最高清晰度，并支持可用音轨和字幕切换。",
   author: "Custom",
   site: "https://www.iqiyi.com",
   detailCacheDuration: 300,
@@ -21,6 +21,14 @@ WidgetMetadata = {
       title: "加载资源",
       functionName: "loadResource",
       type: "stream",
+      cacheDuration: 0,
+      params: [],
+    },
+    {
+      id: "loadSubtitle",
+      title: "加载字幕",
+      functionName: "loadSubtitle",
+      type: "subtitle",
       cacheDuration: 0,
       params: [],
     },
@@ -471,7 +479,21 @@ function parseIqiyiPlaybackBody(value) {
 
 function iqiyiResolutionScore(stream) {
   var match = String(stream && stream.screenSize || "").match(/(\d+)x(\d+)/i);
-  return match ? Number(match[1]) * Number(match[2]) : 0;
+  if (match) return Number(match[1]) * Number(match[2]);
+  var fallback = {
+    96: 426 * 240,
+    1: 640 * 360,
+    2: 896 * 504,
+    21: 960 * 540,
+    4: 1280 * 720,
+    17: 1280 * 720,
+    14: 1280 * 720,
+    5: 1920 * 1080,
+    18: 1920 * 1080,
+    10: 3840 * 2160,
+    19: 3840 * 2160,
+  };
+  return fallback[Number(stream && stream.vd)] || 0;
 }
 
 function iqiyiStreamLabel(stream) {
@@ -484,9 +506,11 @@ function iqiyiStreamLabel(stream) {
     21: "高清",
     4: "720P",
     17: "720P",
+    14: "720P",
     5: "1080P",
     18: "1080P",
     10: "4K",
+    19: "4K",
   };
   var quality = qualityNames[Number(stream && stream.vd)] || "官方清晰度";
   return [quality, size, codec].filter(function (part) { return !!part; }).join(" · ");
@@ -496,76 +520,222 @@ function isOfficialIqiyiPlaybackUrl(value) {
   return /^https?:\/\/(?:[a-z0-9-]+\.)*(?:iqiyi\.com|qiyi\.com|iq\.com)(?::\d+)?(?:\/|$)/i.test(String(value || ""));
 }
 
-async function loadResource(params = {}) {
-  var route = String(params.link || "");
-  if (route.indexOf("iqiyi-play:") !== 0) return [];
+function parseIqiyiPlayRoute(link) {
+  var route = String(link || "");
+  if (route.indexOf("iqiyi-play:") !== 0) return null;
   var parts = route.split(":");
   if (parts.length < 4 || !/^\d+$/.test(parts[1]) || !/^[a-f0-9]{32}$/i.test(parts[2])) {
-    throw new Error("爱奇艺播放参数不完整，请重新打开影视详情后选择分集");
+    return null;
   }
-
-  var tvId = parts[1];
-  var vid = parts[2].toLowerCase();
   var referer = "https://www.iqiyi.com/";
   try {
     referer = decodeURIComponent(parts.slice(3).join(":")) || referer;
   } catch (decodeError) {
     referer = "https://www.iqiyi.com/";
   }
+  return {
+    tvId: parts[1],
+    vid: parts[2].toLowerCase(),
+    referer: referer,
+  };
+}
+
+async function requestIqiyiPlayback(tvId, vid, audioLid) {
+  var timestamp = Date.now();
+  var signature = iqiyiMd5(String(timestamp) + IQIYI_PLAY_KEY + tvId);
+  var requestParams = {
+    tvid: tvId,
+    vid: vid,
+    src: IQIYI_PLAY_SRC,
+    sc: signature,
+    t: timestamp,
+  };
+  if (audioLid !== undefined && audioLid !== null && String(audioLid) !== "") {
+    requestParams.lid = String(audioLid);
+  }
+  var response = await Widget.http.get(IQIYI_PLAY_API + tvId + "/" + vid + "/", {
+    headers: iqiyiHeaders(lastIqiyiCookie),
+    params: requestParams,
+  });
+  var body = parseIqiyiPlaybackBody(response && response.data);
+  if (!body || body.code !== "A00000" || !body.data) {
+    throw new Error((body && (body.msg || body.message)) || "平台未返回播放地址");
+  }
+  return body;
+}
+
+function iqiyiAudioTracks(data) {
+  var raw = data && data.audio;
+  var tracks = Array.isArray(raw) ? raw.slice() : (raw ? [raw] : []);
+  var seen = {};
+  tracks = tracks.filter(function (track) {
+    var lid = String(track && track.lid !== undefined ? track.lid : "");
+    if (!lid || seen[lid]) return false;
+    seen[lid] = true;
+    return true;
+  });
+  tracks.sort(function (left, right) {
+    return Number(right && right.ispre || 0) - Number(left && left.ispre || 0);
+  });
+  return tracks;
+}
+
+function iqiyiAudioName(track) {
+  return cleanText(track && (track.name || track._name)) ||
+    (track && track.lid !== undefined ? "音轨 " + String(track.lid) : "默认音轨");
+}
+
+function iqiyiSortedStreams(data) {
+  var streams = data && Array.isArray(data.vidl) ? data.vidl.slice() : [];
+  streams = streams.filter(function (stream) {
+    return stream && stream.m3utx && isOfficialIqiyiPlaybackUrl(stream.m3utx);
+  });
+  streams.sort(function (left, right) {
+    var resolutionDifference = iqiyiResolutionScore(right) - iqiyiResolutionScore(left);
+    if (resolutionDifference) return resolutionDifference;
+    var leftH265 = /265/i.test(String(left.fileFormat || "")) ? 1 : 0;
+    var rightH265 = /265/i.test(String(right.fileFormat || "")) ? 1 : 0;
+    return leftH265 - rightH265;
+  });
+  return streams;
+}
+
+function buildIqiyiResources(body, track, referer, seen) {
+  var streams = iqiyiSortedStreams(body && body.data);
+  var preview = body && body.data && body.data.boss_ts && body.data.boss_ts.data &&
+    (body.data.boss_ts.data.prv || body.data.boss_ts.data.previewTime);
+  var audioName = iqiyiAudioName(track);
+  return streams.map(function (stream, index) {
+    var playbackUrl = httpsUrl(stream.m3utx);
+    if (seen[playbackUrl]) return null;
+    seen[playbackUrl] = true;
+    var label = iqiyiStreamLabel(stream);
+    return {
+      name: "爱奇艺 " + audioName + " · " + label +
+        (index === 0 ? " · 账号当前最高" : " · 备用画质"),
+      description: "爱奇艺官方混流 HLS · 选择线路可切换音轨" +
+        (preview ? " · 当前为平台预览权限" : ""),
+      url: playbackUrl,
+      customHeaders: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/136 Safari/537.36",
+        Referer: referer,
+      },
+      playerType: "app",
+    };
+  }).filter(function (item) { return !!item; });
+}
+
+function iqiyiSubtitleLanguage(lid, fallback) {
+  var languages = {
+    1: "zh-CN",
+    2: "zh-TW",
+    3: "en",
+    4: "ko",
+    5: "ja",
+    18: "th",
+    21: "my",
+    23: "vi",
+    24: "id",
+    26: "es",
+    27: "pt",
+    28: "ar",
+  };
+  return languages[Number(lid)] || cleanText(fallback) || "und";
+}
+
+function resolveIqiyiSubtitleUrl(baseUrl, value) {
+  var path = String(value || "").trim();
+  if (!path) return "";
+  if (/^https?:\/\//i.test(path) || path.indexOf("//") === 0) return httpsUrl(path);
+  var base = httpsUrl(baseUrl || "https://meta.video.iqiyi.com/");
+  var originMatch = base.match(/^(https?:\/\/[^/]+)/i);
+  if (path.charAt(0) === "/") return originMatch ? originMatch[1] + path : "";
+  return base.replace(/\/?$/, "/") + path.replace(/^\.\//, "");
+}
+
+function isOfficialIqiyiSubtitleUrl(value) {
+  return /^https?:\/\/(?:[a-z0-9-]+\.)*(?:iqiyi\.com|qiyi\.com|iq\.com|iqiyipic\.com)(?::\d+)?(?:\/|$)/i.test(String(value || ""));
+}
+
+function extractIqiyiSubtitles(body) {
+  var data = body && body.data;
+  var program = data && data.program;
+  var tracks = program && Array.isArray(program.stl) ? program.stl : [];
+  var baseUrl = data && data.dstl;
+  var seen = {};
+  return tracks.map(function (track, index) {
+    var subtitlePath = track && (track.webvtt || track.srt);
+    var url = resolveIqiyiSubtitleUrl(baseUrl, subtitlePath);
+    if (!url || !isOfficialIqiyiSubtitleUrl(url) || seen[url]) return null;
+    seen[url] = true;
+    var language = iqiyiSubtitleLanguage(track.lid, track._name || track.name);
+    return {
+      id: "iqiyi-subtitle-" + String(track.lid || index),
+      title: cleanText(track._name || track.name) || "爱奇艺官方字幕",
+      lang: language,
+      count: 1,
+      url: url,
+    };
+  }).filter(function (subtitle) { return !!subtitle; });
+}
+
+async function loadSubtitle(params = {}) {
+  var playRoute = parseIqiyiPlayRoute(params.link);
+  if (!playRoute) return [];
+  var runtimeCookie = sanitizeCookie(params.iqiyiCookie);
+  if (runtimeCookie) lastIqiyiCookie = runtimeCookie;
+  try {
+    return extractIqiyiSubtitles(await requestIqiyiPlayback(playRoute.tvId, playRoute.vid));
+  } catch (error) {
+    console.warn("[爱奇艺字幕] 加载失败:", error.message || error);
+    return [];
+  }
+}
+
+async function loadResource(params = {}) {
+  var route = String(params.link || "");
+  if (route.indexOf("iqiyi-play:") !== 0) return [];
+  var playRoute = parseIqiyiPlayRoute(route);
+  if (!playRoute) {
+    throw new Error("爱奇艺播放参数不完整，请重新打开影视详情后选择分集");
+  }
   var runtimeCookie = sanitizeCookie(params.iqiyiCookie);
   if (runtimeCookie) lastIqiyiCookie = runtimeCookie;
 
-  var timestamp = Date.now();
-  var signature = iqiyiMd5(String(timestamp) + IQIYI_PLAY_KEY + tvId);
   try {
-    var response = await Widget.http.get(IQIYI_PLAY_API + tvId + "/" + vid + "/", {
-      headers: iqiyiHeaders(lastIqiyiCookie),
-      params: {
-        tvid: tvId,
-        vid: vid,
-        src: IQIYI_PLAY_SRC,
-        sc: signature,
-        t: timestamp,
-      },
-    });
-    var body = parseIqiyiPlaybackBody(response && response.data);
-    if (!body || body.code !== "A00000" || !body.data) {
-      throw new Error((body && (body.msg || body.message)) || "平台未返回播放地址");
+    var body = await requestIqiyiPlayback(playRoute.tvId, playRoute.vid);
+    var tracks = iqiyiAudioTracks(body.data);
+    if (!tracks.length) tracks = [null];
+    var responses = [{ track: tracks[0], body: body }];
+    for (var trackIndex = 1; trackIndex < tracks.length; trackIndex += 1) {
+      try {
+        responses.push({
+          track: tracks[trackIndex],
+          body: await requestIqiyiPlayback(
+            playRoute.tvId,
+            playRoute.vid,
+            tracks[trackIndex].lid
+          ),
+        });
+      } catch (trackError) {
+        console.warn("[爱奇艺播放] 音轨加载失败:", iqiyiAudioName(tracks[trackIndex]), trackError.message || trackError);
+      }
     }
 
-    var streams = Array.isArray(body.data.vidl) ? body.data.vidl.slice() : [];
-    streams = streams.filter(function (stream) {
-      return stream && stream.m3utx && isOfficialIqiyiPlaybackUrl(stream.m3utx);
-    });
-    streams.sort(function (left, right) {
-      var leftH265 = /265/i.test(String(left.fileFormat || "")) ? 1 : 0;
-      var rightH265 = /265/i.test(String(right.fileFormat || "")) ? 1 : 0;
-      if (leftH265 !== rightH265) return leftH265 - rightH265;
-      return iqiyiResolutionScore(right) - iqiyiResolutionScore(left);
-    });
-    if (!streams.length) {
+    var seen = {};
+    var resources = [];
+    for (var responseIndex = 0; responseIndex < responses.length; responseIndex += 1) {
+      resources = resources.concat(buildIqiyiResources(
+        responses[responseIndex].body,
+        responses[responseIndex].track,
+        playRoute.referer,
+        seen
+      ));
+    }
+    if (!resources.length) {
       throw new Error("账号当前没有可播放的官方 HLS 线路，请检查会员权限或地区限制");
     }
-
-    var preview = body.data.boss_ts && body.data.boss_ts.data &&
-      (body.data.boss_ts.data.prv || body.data.boss_ts.data.previewTime);
-    var seen = {};
-    return streams.map(function (stream) {
-      var playbackUrl = httpsUrl(stream.m3utx);
-      if (seen[playbackUrl]) return null;
-      seen[playbackUrl] = true;
-      var label = iqiyiStreamLabel(stream);
-      return {
-        name: "爱奇艺 " + label,
-        description: "爱奇艺官方 HLS · 会员权限由爱奇艺账号校验" + (preview ? " · 当前为平台预览权限" : ""),
-        url: playbackUrl,
-        customHeaders: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/136 Safari/537.36",
-          Referer: referer,
-        },
-        playerType: "app",
-      };
-    }).filter(function (item) { return !!item; });
+    return resources;
   } catch (error) {
     console.error("[爱奇艺播放] 加载失败:", error.message || error);
     throw new Error("爱奇艺播放资源加载失败：" + (error.message || error));

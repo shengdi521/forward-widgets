@@ -1,9 +1,9 @@
 WidgetMetadata = {
   id: "forward.bilibili.tv.search",
   title: "B站影视搜索",
-  version: "1.2.0",
+  version: "1.3.0",
   requiredVersion: "0.0.2",
-  description: "使用可选的个人 Cookie 搜索并在线观看 B站官方电影、电视剧、番剧、国创、综艺和纪录片。",
+  description: "使用可选的个人 Cookie 搜索并在线观看 B站官方影视；自动请求账号可达的最高清晰度，并加载可用的官方字幕。",
   author: "Custom",
   site: "https://www.bilibili.com",
   detailCacheDuration: 300,
@@ -21,6 +21,14 @@ WidgetMetadata = {
       title: "加载资源",
       functionName: "loadResource",
       type: "stream",
+      cacheDuration: 0,
+      params: [],
+    },
+    {
+      id: "loadSubtitle",
+      title: "加载字幕",
+      functionName: "loadSubtitle",
+      type: "subtitle",
       cacheDuration: 0,
       params: [],
     },
@@ -78,6 +86,7 @@ var BILIBILI_WBI_SEARCH_API = "https://api.bilibili.com/x/web-interface/wbi/sear
 var BILIBILI_NAV_API = "https://api.bilibili.com/x/web-interface/nav";
 var BILIBILI_SEASON_API = "https://api.bilibili.com/pgc/view/web/season";
 var BILIBILI_PLAY_API = "https://api.bilibili.com/pgc/player/web/playurl";
+var BILIBILI_PLAYER_V2_API = "https://api.bilibili.com/x/player/v2";
 var BILIBILI_CACHE_PREFIX = "bilibili-tv-detail:";
 var lastBilibiliCookie = "";
 var cachedBilibiliWbiKeys = null;
@@ -524,18 +533,90 @@ function bilibiliPlaybackHeaders(epId) {
   };
 }
 
+function parseBilibiliPlayRoute(link) {
+  var route = String(link || "");
+  if (route.indexOf("bilibili-play:") !== 0) return null;
+  var parts = route.split(":");
+  if (parts.length !== 5 || !/^\d+$/.test(parts[2]) ||
+      !/^\d+$/.test(parts[3]) || !/^\d+$/.test(parts[4])) return null;
+  return {
+    seasonId: parts[1],
+    epId: parts[2],
+    aid: parts[3],
+    cid: parts[4],
+  };
+}
+
+function isOfficialBilibiliSubtitleUrl(value) {
+  return /^https?:\/\/(?:[a-z0-9-]+\.)*(?:bilibili\.com|hdslb\.com|bilivideo\.com)(?::\d+)?(?:\/|$)/i.test(String(value || ""));
+}
+
+function normalizeBilibiliSubtitleLanguage(value) {
+  var language = String(value || "").replace(/_/g, "-");
+  var aliases = {
+    "ai-zh": "zh-CN",
+    "zh-CN": "zh-CN",
+    "zh-Hans": "zh-CN",
+    "zh-TW": "zh-TW",
+    "zh-Hant": "zh-TW",
+  };
+  return aliases[language] || language || "und";
+}
+
+async function loadSubtitle(params = {}) {
+  var playRoute = parseBilibiliPlayRoute(params.link);
+  if (!playRoute) return [];
+  var runtimeCookie = sanitizeCookie(params.bilibiliCookie);
+  if (runtimeCookie) lastBilibiliCookie = runtimeCookie;
+
+  try {
+    var response = await Widget.http.get(BILIBILI_PLAYER_V2_API, {
+      headers: bilibiliHeaders(
+        lastBilibiliCookie,
+        "https://www.bilibili.com/bangumi/play/ep" + playRoute.epId
+      ),
+      params: {
+        aid: playRoute.aid,
+        cid: playRoute.cid,
+      },
+    });
+    var body = response && response.data;
+    if (!body || Number(body.code) !== 0 || !body.data) return [];
+    var subtitleData = body.data.subtitle;
+    var subtitles = subtitleData && Array.isArray(subtitleData.subtitles)
+      ? subtitleData.subtitles
+      : [];
+    var seen = {};
+    return subtitles.map(function (subtitle, index) {
+      var url = httpsUrl(subtitle && (subtitle.subtitle_url || subtitle.url));
+      if (!url || !isOfficialBilibiliSubtitleUrl(url) || seen[url]) return null;
+      seen[url] = true;
+      var language = normalizeBilibiliSubtitleLanguage(subtitle.lan);
+      return {
+        id: "bilibili-subtitle-" + String(subtitle.id || language || index),
+        title: cleanText(subtitle.lan_doc || subtitle.lan || "B站官方字幕"),
+        lang: language,
+        count: 1,
+        url: url,
+      };
+    }).filter(function (subtitle) { return !!subtitle; });
+  } catch (error) {
+    console.warn("[B站字幕] 加载失败:", error.message || error);
+    return [];
+  }
+}
+
 async function loadResource(params = {}) {
   var route = String(params.link || "");
   if (route.indexOf("bilibili-play:") !== 0) return [];
-  var parts = route.split(":");
-  if (parts.length !== 5 || !/^\d+$/.test(parts[2]) ||
-      !/^\d+$/.test(parts[3]) || !/^\d+$/.test(parts[4])) {
+  var playRoute = parseBilibiliPlayRoute(route);
+  if (!playRoute) {
     throw new Error("B站播放参数不完整，请重新打开影视详情后选择分集");
   }
 
-  var epId = parts[2];
-  var aid = parts[3];
-  var cid = parts[4];
+  var epId = playRoute.epId;
+  var aid = playRoute.aid;
+  var cid = playRoute.cid;
   var runtimeCookie = sanitizeCookie(params.bilibiliCookie);
   if (runtimeCookie) lastBilibiliCookie = runtimeCookie;
 
@@ -578,8 +659,8 @@ async function loadResource(params = {}) {
       if (!playbackUrl || seen[playbackUrl]) return null;
       seen[playbackUrl] = true;
       return {
-        name: "B站 " + quality + (index === 0 ? " · 主线路" : " · 备用线路 " + index),
-        description: "B站官方 MP4 · 会员权限由 B站账号校验",
+        name: "B站 " + quality + (index === 0 ? " · 账号当前最高" : " · 同画质备用线路 " + index),
+        description: "B站官方混流 MP4 · 自动请求账号可达最高画质 · 默认音轨",
         url: playbackUrl,
         customHeaders: bilibiliPlaybackHeaders(epId),
         playerType: "app",

@@ -59,6 +59,17 @@ async function probeResource(resource) {
   return { status: response.status, contentType, valid };
 }
 
+async function probeSubtitle(subtitle) {
+  const response = await fetch(subtitle.url);
+  const contentType = response.headers.get("content-type") || "";
+  if (response.body) await response.body.cancel();
+  return {
+    status: response.status,
+    contentType,
+    valid: response.ok,
+  };
+}
+
 function firstPlayableEpisode(detail, fallback) {
   return [...(detail?.episodeItems || []), ...(fallback?.episodeItems || [])]
     .find((item) => /^(?:bilibili|iqiyi)-play:/.test(String(item.link || "")));
@@ -81,8 +92,20 @@ async function runCases(platform, sandbox, cases, cookieName, cookieValue) {
     if (!episode) throw new Error(`${platform} ${item.title} 没有可播放分集路由`);
     const resources = await sandbox.loadResource({ link: episode.link, [cookieName]: cookieValue || "" });
     if (!resources.length) throw new Error(`${platform} ${item.title} 没有播放线路`);
+    if (!/账号当前最高/.test(String(resources[0].name || ""))) {
+      throw new Error(`${platform} ${item.title} 第一条线路不是账号当前最高画质`);
+    }
     const probe = await probeResource(resources[0]);
     if (!probe.valid) throw new Error(`${platform} ${item.title} 播放线路探测失败：HTTP ${probe.status}`);
+    const subtitles = await sandbox.loadSubtitle({ link: episode.link, [cookieName]: cookieValue || "" });
+    const subtitleProbes = [];
+    for (const subtitle of subtitles) {
+      const subtitleProbe = await probeSubtitle(subtitle);
+      if (!subtitleProbe.valid) {
+        throw new Error(`${platform} ${item.title} 字幕探测失败：HTTP ${subtitleProbe.status}`);
+      }
+      subtitleProbes.push(subtitleProbe.status);
+    }
     rows.push({
       platform,
       type: testCase.contentType,
@@ -90,6 +113,8 @@ async function runCases(platform, sandbox, cases, cookieName, cookieValue) {
       title: item.title,
       episodes: detail?.episodeItems?.length || item.episodeItems?.length || 0,
       resources: resources.length,
+      subtitles: subtitles.length,
+      subtitleStatus: subtitleProbes.join(",") || "-",
       status: probe.status,
       contentType: probe.contentType,
     });
