@@ -1,8 +1,8 @@
 WidgetMetadata = {
   id: "forward.bilibili.tv.search",
   title: "B站电视剧搜索",
-  version: "1.0.0",
-  requiredVersion: "0.0.1",
+  version: "1.0.1",
+  requiredVersion: "0.0.2",
   description: "使用可选的个人 Cookie 搜索 B站番剧、国创和影视内容，并展示官方详情与分集页面。",
   author: "Custom",
   site: "https://www.bilibili.com",
@@ -13,15 +13,31 @@ WidgetMetadata = {
       title: "B站 Cookie（可选）",
       type: "input",
       description: "填写你自己的完整 Cookie。仅随 B站请求发送，模块不会输出 Cookie。",
-      placeholders: [
+    },
+  ],
+  modules: [
+    {
+      id: "searchBilibiliTv",
+      title: "搜索 B站电视剧",
+      functionName: "search",
+      cacheDuration: 300,
+      params: [
+        { name: "keyword", title: "剧名", type: "input" },
         {
-          title: "SESSDATA、bili_jct、DedeUserID 等",
-          value: "",
+          name: "contentType",
+          title: "内容类型",
+          type: "enumeration",
+          value: "all",
+          enumOptions: [
+            { title: "全部（番剧/国创 + 影视）", value: "all" },
+            { title: "番剧/国创", value: "media_bangumi" },
+            { title: "影视", value: "media_ft" },
+          ],
         },
+        { name: "page", title: "页码", type: "page" },
       ],
     },
   ],
-  modules: [],
   search: {
     title: "搜索 B站电视剧",
     functionName: "search",
