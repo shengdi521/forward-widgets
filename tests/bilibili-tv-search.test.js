@@ -79,8 +79,13 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "forward.bilibili.tv.search");
-  assert.equal(sandbox.WidgetMetadata.modules.length, 0);
+  assert.equal(sandbox.WidgetMetadata.version, "1.0.1");
+  assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.2");
+  assert.equal(sandbox.WidgetMetadata.modules.length, 1);
+  assert.equal(sandbox.WidgetMetadata.modules[0].id, "searchBilibiliTv");
+  assert.equal(sandbox.WidgetMetadata.modules[0].functionName, "search");
   assert.equal(sandbox.WidgetMetadata.globalParams[0].name, "bilibiliCookie");
+  assert.equal(sandbox.WidgetMetadata.globalParams[0].placeholders, undefined);
   assert.equal(sandbox.WidgetMetadata.search.functionName, "search");
 
   const results = await sandbox.search({

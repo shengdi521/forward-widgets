@@ -1,8 +1,8 @@
 WidgetMetadata = {
   id: "forward.iqiyi.tv.search",
   title: "爱奇艺电视剧搜索",
-  version: "1.0.0",
-  requiredVersion: "0.0.1",
+  version: "1.0.1",
+  requiredVersion: "0.0.2",
   description: "使用可选的个人 Cookie 搜索爱奇艺站内电视剧，并展示官方详情与分集页面。",
   author: "Custom",
   site: "https://www.iqiyi.com",
@@ -13,15 +13,20 @@ WidgetMetadata = {
       title: "爱奇艺 Cookie（可选）",
       type: "input",
       description: "填写你自己的完整 Cookie。仅随爱奇艺请求发送，模块不会输出 Cookie。",
-      placeholders: [
-        {
-          title: "完整 Cookie 字符串",
-          value: "",
-        },
+    },
+  ],
+  modules: [
+    {
+      id: "searchIqiyiTv",
+      title: "搜索爱奇艺电视剧",
+      functionName: "search",
+      cacheDuration: 300,
+      params: [
+        { name: "keyword", title: "剧名", type: "input" },
+        { name: "page", title: "页码", type: "page" },
       ],
     },
   ],
-  modules: [],
   search: {
     title: "搜索爱奇艺电视剧",
     functionName: "search",
