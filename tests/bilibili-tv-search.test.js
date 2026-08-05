@@ -1,0 +1,131 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
+
+const target = path.resolve(__dirname, "..", "widgets", "bilibili-tv-search.js");
+const calls = [];
+const stored = new Map();
+const TEST_COOKIE = "test-cookie-bilibili";
+
+const searchRow = {
+  season_id: 28747,
+  title: '<em class="keyword">凡人修仙传</em>',
+  season_type_name: "国创",
+  cover: "http://i0.hdslb.com/poster.jpg",
+  areas: "中国大陆",
+  styles: "玄幻/热血",
+  index_show: "更新至第185话",
+  desc: "凡人修仙故事",
+  goto_url: "https://www.bilibili.com/bangumi/play/ss28747",
+  pubtime: 1595606400,
+  media_score: { score: 9.7 },
+  eps: [{ cover: "http://i0.hdslb.com/episode.jpg" }],
+};
+
+const sandbox = {
+  WidgetMetadata: undefined,
+  console: { log() {}, warn() {}, error() {} },
+  Widget: {
+    http: {
+      get: async (url, options) => {
+        calls.push({ url, options });
+        if (url.includes("/search/type")) {
+          return { data: { code: 0, message: "OK", data: { result: [searchRow] } } };
+        }
+        if (url.includes("/pgc/view/web/season")) {
+          return {
+            data: {
+              code: 0,
+              result: {
+                season_id: 28747,
+                title: "凡人修仙传",
+                cover: "https://i0.hdslb.com/poster.jpg",
+                square_cover: "https://i0.hdslb.com/square.jpg",
+                evaluate: "官方简介",
+                share_url: "https://www.bilibili.com/bangumi/play/ss28747",
+                publish: { pub_time: "2020-07-25 20:00:00" },
+                rating: { score: 9.7 },
+                episodes: [
+                  {
+                    id: 733316,
+                    title: "1",
+                    long_title: "凡人风起天南",
+                    link: "http://www.bilibili.com/bangumi/play/ep733316",
+                    cover: "http://i0.hdslb.com/ep1.jpg",
+                    pub_time: 1675566000,
+                    badge: "限免",
+                  },
+                ],
+              },
+            },
+          };
+        }
+        throw new Error("unmocked URL: " + url);
+      },
+    },
+    storage: {
+      get: (key) => stored.get(key),
+      set: (key, value) => stored.set(key, value),
+      remove: (key) => stored.delete(key),
+    },
+  },
+};
+
+vm.createContext(sandbox);
+new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContext(sandbox);
+
+(async () => {
+  assert.equal(sandbox.WidgetMetadata.id, "forward.bilibili.tv.search");
+  assert.equal(sandbox.WidgetMetadata.modules.length, 0);
+  assert.equal(sandbox.WidgetMetadata.globalParams[0].name, "bilibiliCookie");
+  assert.equal(sandbox.WidgetMetadata.search.functionName, "search");
+
+  const results = await sandbox.search({
+    keyword: "凡人修仙传",
+    page: 2,
+    contentType: "all",
+    bilibiliCookie: TEST_COOKIE,
+  });
+
+  assert.equal(calls.filter((call) => call.url.includes("/search/type")).length, 2);
+  assert.deepEqual(
+    calls.filter((call) => call.url.includes("/search/type")).map((call) => call.options.params.search_type),
+    ["media_bangumi", "media_ft"],
+  );
+  assert.equal(calls[0].options.params.keyword, "凡人修仙传");
+  assert.equal(calls[0].options.params.page, 2);
+  assert.equal(calls[0].options.headers.Cookie, TEST_COOKIE);
+
+  assert.equal(results.length, 1, "重复 season_id 应去重");
+  assert.equal(results[0].title, "凡人修仙传");
+  assert.equal(results[0].type, "url");
+  assert.equal(results[0].mediaType, "tv");
+  assert.equal(results[0].link, "bilibili:28747");
+  assert.match(results[0].posterPath, /^https:\/\//);
+  assert.equal(results[0].stills, undefined);
+  assert.equal(results[0].recommendations, undefined);
+  assert.ok(!JSON.stringify(Array.from(stored.values())).includes(TEST_COOKIE), "缓存不得包含 Cookie");
+
+  const detail = await sandbox.loadDetail(results[0].link);
+  const detailCall = calls.find((call) => call.url.includes("/pgc/view/web/season"));
+  assert.equal(detailCall.options.params.season_id, "28747");
+  assert.equal(detailCall.options.headers.Cookie, TEST_COOKIE);
+  assert.equal(detail.title, "凡人修仙传");
+  assert.equal(detail.episodeItems.length, 1);
+  assert.equal(detail.episodeItems[0].title, "第1集 · 凡人风起天南");
+  assert.match(detail.episodeItems[0].id, /^https:\/\//);
+  assert.equal(detail.stills, undefined);
+  assert.equal(await sandbox.loadDetail("iqiyi:1"), null);
+
+  console.log("OK bilibili-tv-search", {
+    searchRequests: 2,
+    results: results.length,
+    episodes: detail.episodeItems.length,
+  });
+})().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
