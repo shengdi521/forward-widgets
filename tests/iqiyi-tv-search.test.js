@@ -138,21 +138,37 @@ const sandbox = {
           };
         }
         if (url.includes("/jp/tmts/")) {
+          const isCantonese = String(options.params.lid || "") === "2";
           return {
             data: "var tvInfoJs=" + JSON.stringify({
               code: "A00000",
               data: {
+                audio: [
+                  { lid: 1, name: "国语", ispre: 1 },
+                  { lid: 2, name: "粤语", ispre: 0 },
+                ],
+                dstl: "http://meta.video.iqiyi.com",
+                program: {
+                  stl: [
+                    { lid: 1, _name: "简体中文", webvtt: "/subtitle/test.vtt" },
+                    { lid: 3, _name: "非官方字幕", webvtt: "https://example.com/test.vtt" },
+                  ],
+                },
                 vidl: [
                   {
                     vd: 18,
                     screenSize: "1920x1080",
                     fileFormat: "H265",
-                    m3utx: "http://mus.video.iqiyi.com/video-h265.m3u8?token=h265",
+                    m3utx: isCantonese
+                      ? "http://mus.video.iqiyi.com/video-yue-h265.m3u8?token=h265"
+                      : "http://mus.video.iqiyi.com/video-h265.m3u8?token=h265",
                   },
                   {
                     vd: 4,
                     screenSize: "1280x720",
-                    m3utx: "https://mus.video.iqiyi.com/video-h264.m3u8?token=h264",
+                    m3utx: isCantonese
+                      ? "https://mus.video.iqiyi.com/video-yue-h264.m3u8?token=h264"
+                      : "https://mus.video.iqiyi.com/video-h264.m3u8?token=h264",
                   },
                 ],
               },
@@ -176,15 +192,18 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "forward.iqiyi.tv.search");
   assert.equal(sandbox.WidgetMetadata.title, "爱奇艺影视搜索");
-  assert.equal(sandbox.WidgetMetadata.version, "1.2.0");
+  assert.equal(sandbox.WidgetMetadata.version, "1.3.0");
   assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.2");
-  assert.equal(sandbox.WidgetMetadata.modules.length, 2);
+  assert.equal(sandbox.WidgetMetadata.modules.length, 3);
   assert.equal(sandbox.WidgetMetadata.modules[0].id, "loadResource");
   assert.equal(sandbox.WidgetMetadata.modules[0].functionName, "loadResource");
   assert.equal(sandbox.WidgetMetadata.modules[0].type, "stream");
   assert.equal(sandbox.WidgetMetadata.modules[0].cacheDuration, 0);
-  assert.equal(sandbox.WidgetMetadata.modules[1].id, "searchIqiyiTv");
-  assert.equal(sandbox.WidgetMetadata.modules[1].functionName, "search");
+  assert.equal(sandbox.WidgetMetadata.modules[1].id, "loadSubtitle");
+  assert.equal(sandbox.WidgetMetadata.modules[1].functionName, "loadSubtitle");
+  assert.equal(sandbox.WidgetMetadata.modules[1].type, "subtitle");
+  assert.equal(sandbox.WidgetMetadata.modules[2].id, "searchIqiyiTv");
+  assert.equal(sandbox.WidgetMetadata.modules[2].functionName, "search");
   assert.equal(sandbox.WidgetMetadata.globalParams[0].name, "iqiyiCookie");
   assert.equal(sandbox.WidgetMetadata.globalParams[0].placeholders, undefined);
 
@@ -249,7 +268,8 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
     link: detail.episodeItems[0].link,
     iqiyiCookie: TEST_COOKIE,
   });
-  const playCall = calls.find((call) => call.url.includes("/jp/tmts/"));
+  const playCalls = calls.filter((call) => call.url.includes("/jp/tmts/"));
+  const playCall = playCalls[0];
   assert.match(playCall.url, /\/8010127344745600\/0d2705c1ebed7831f58740f5149ceeee\/$/);
   assert.equal(playCall.options.params.tvid, "8010127344745600");
   assert.equal(playCall.options.params.vid, "0d2705c1ebed7831f58740f5149ceeee");
@@ -259,12 +279,29 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
     sandbox.iqiyiMd5(String(playCall.options.params.t) + "d5fb4bd9d50c4be6948c97edd7254b0e" + "8010127344745600"),
   );
   assert.equal(playCall.options.headers.Cookie, TEST_COOKIE);
-  assert.equal(resources.length, 2);
-  assert.match(resources[0].name, /720P/);
-  assert.match(resources[0].name, /H\.264/);
+  assert.equal(playCalls.length, 2, "多音轨时应按 lid 请求非默认音轨");
+  assert.equal(playCalls[0].options.params.lid, undefined);
+  assert.equal(playCalls[1].options.params.lid, "2");
+  assert.equal(resources.length, 4);
+  assert.match(resources[0].name, /国语/);
+  assert.match(resources[0].name, /1080P/);
+  assert.match(resources[0].name, /H\.265/);
+  assert.match(resources[0].name, /账号当前最高/);
+  assert.match(resources[2].name, /粤语/);
+  assert.match(resources[2].name, /账号当前最高/);
   assert.match(resources[0].url, /^https:\/\//);
   assert.equal(resources[0].playerType, "app");
   assert.equal(resources[0].customHeaders.Cookie, undefined, "Cookie 不得发送给视频 CDN");
+
+  const subtitles = await sandbox.loadSubtitle({
+    link: detail.episodeItems[0].link,
+    iqiyiCookie: TEST_COOKIE,
+  });
+  assert.equal(subtitles.length, 1, "字幕应过滤非官方地址");
+  assert.equal(subtitles[0].title, "简体中文");
+  assert.equal(subtitles[0].lang, "zh-CN");
+  assert.equal(subtitles[0].url, "https://meta.video.iqiyi.com/subtitle/test.vtt");
+  assert.equal((await sandbox.loadSubtitle({ link: "bilibili-play:1:2:3:4" })).length, 0);
   assert.equal((await sandbox.loadResource({ link: "bilibili-play:1:2:3:4" })).length, 0);
 
   console.log("OK iqiyi-tv-search", {

@@ -145,6 +145,37 @@ const sandbox = {
             },
           };
         }
+        if (url.includes("/x/player/v2")) {
+          return {
+            data: {
+              code: 0,
+              data: {
+                subtitle: {
+                  subtitles: [
+                    {
+                      id: 101,
+                      lan: "zh-Hans",
+                      lan_doc: "中文（简体）",
+                      subtitle_url: "//aisubtitle.hdslb.com/bfs/ai_subtitle/test.json",
+                    },
+                    {
+                      id: 102,
+                      lan: "zh-Hans",
+                      lan_doc: "重复字幕",
+                      subtitle_url: "https://aisubtitle.hdslb.com/bfs/ai_subtitle/test.json",
+                    },
+                    {
+                      id: 103,
+                      lan: "en",
+                      lan_doc: "非官方地址",
+                      subtitle_url: "https://example.com/subtitle.vtt",
+                    },
+                  ],
+                },
+              },
+            },
+          };
+        }
         throw new Error("unmocked URL: " + url);
       },
     },
@@ -162,15 +193,18 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "forward.bilibili.tv.search");
   assert.equal(sandbox.WidgetMetadata.title, "B站影视搜索");
-  assert.equal(sandbox.WidgetMetadata.version, "1.2.0");
+  assert.equal(sandbox.WidgetMetadata.version, "1.3.0");
   assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.2");
-  assert.equal(sandbox.WidgetMetadata.modules.length, 2);
+  assert.equal(sandbox.WidgetMetadata.modules.length, 3);
   assert.equal(sandbox.WidgetMetadata.modules[0].id, "loadResource");
   assert.equal(sandbox.WidgetMetadata.modules[0].functionName, "loadResource");
   assert.equal(sandbox.WidgetMetadata.modules[0].type, "stream");
   assert.equal(sandbox.WidgetMetadata.modules[0].cacheDuration, 0);
-  assert.equal(sandbox.WidgetMetadata.modules[1].id, "searchBilibiliTv");
-  assert.equal(sandbox.WidgetMetadata.modules[1].functionName, "search");
+  assert.equal(sandbox.WidgetMetadata.modules[1].id, "loadSubtitle");
+  assert.equal(sandbox.WidgetMetadata.modules[1].functionName, "loadSubtitle");
+  assert.equal(sandbox.WidgetMetadata.modules[1].type, "subtitle");
+  assert.equal(sandbox.WidgetMetadata.modules[2].id, "searchBilibiliTv");
+  assert.equal(sandbox.WidgetMetadata.modules[2].functionName, "search");
   assert.equal(sandbox.WidgetMetadata.globalParams[0].name, "bilibiliCookie");
   assert.equal(sandbox.WidgetMetadata.globalParams[0].placeholders, undefined);
   assert.equal(sandbox.WidgetMetadata.search.functionName, "search");
@@ -237,6 +271,21 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.match(resources[0].url, /^https:\/\//);
   assert.equal(resources[0].playerType, "app");
   assert.equal(resources[0].customHeaders.Cookie, undefined, "Cookie 不得发送给视频 CDN");
+  assert.match(resources[0].name, /账号当前最高/);
+
+  const subtitles = await sandbox.loadSubtitle({
+    link: detail.episodeItems[0].link,
+    bilibiliCookie: TEST_COOKIE,
+  });
+  const subtitleCall = calls.find((call) => call.url.includes("/x/player/v2"));
+  assert.equal(subtitleCall.options.params.aid, "478818261");
+  assert.equal(subtitleCall.options.params.cid, "1022370693");
+  assert.equal(subtitleCall.options.headers.Cookie, TEST_COOKIE);
+  assert.equal(subtitles.length, 1, "字幕应去重并过滤非官方地址");
+  assert.equal(subtitles[0].title, "中文（简体）");
+  assert.equal(subtitles[0].lang, "zh-CN");
+  assert.match(subtitles[0].url, /^https:\/\/aisubtitle\.hdslb\.com\//);
+  assert.equal((await sandbox.loadSubtitle({ link: "iqiyi-play:1:abc:x" })).length, 0);
   assert.equal((await sandbox.loadResource({ link: "iqiyi-play:1:abc:x" })).length, 0);
 
   const movieResults = await sandbox.search({
