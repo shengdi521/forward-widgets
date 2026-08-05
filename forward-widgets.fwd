@@ -6,18 +6,18 @@
     {
       "id": "forward.bilibili.tv.search",
       "title": "B站影视搜索",
-      "description": "使用可选的个人 Cookie 搜索 B站电影、电视剧、番剧、国创、综艺和纪录片，并展示官方详情与分集页面。",
+      "description": "使用可选的个人 Cookie 搜索并在线观看 B站官方电影、电视剧、番剧、国创、综艺和纪录片。",
       "requiredVersion": "0.0.2",
-      "version": "1.1.1",
+      "version": "1.2.0",
       "author": "Custom",
       "url": "https://raw.githubusercontent.com/shengdi521/forward-widgets/main/widgets/bilibili-tv-search.js"
     },
     {
       "id": "forward.iqiyi.tv.search",
       "title": "爱奇艺影视搜索",
-      "description": "使用可选的个人 Cookie 搜索爱奇艺站内电影、电视剧、动漫、综艺和纪录片，并展示官方详情与分集页面。",
+      "description": "使用可选的个人 Cookie 搜索并在线观看爱奇艺官方电影、电视剧、动漫、综艺和纪录片。",
       "requiredVersion": "0.0.2",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "author": "Custom",
       "url": "https://raw.githubusercontent.com/shengdi521/forward-widgets/main/widgets/iqiyi-tv-search.js"
     }

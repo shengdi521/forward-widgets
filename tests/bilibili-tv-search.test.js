@@ -82,6 +82,8 @@ const sandbox = {
                   episodes: [
                     {
                       id: 317650,
+                      aid: 93198003,
+                      cid: 159116300,
                       title: "正片",
                       long_title: "",
                       link: "https://www.bilibili.com/bangumi/play/ep317650?theme=movie",
@@ -108,12 +110,35 @@ const sandbox = {
                 episodes: [
                   {
                     id: 733316,
+                    aid: 478818261,
+                    cid: 1022370693,
                     title: "1",
                     long_title: "凡人风起天南",
                     link: "http://www.bilibili.com/bangumi/play/ep733316",
                     cover: "http://i0.hdslb.com/ep1.jpg",
                     pub_time: 1675566000,
                     badge: "限免",
+                  },
+                ],
+              },
+            },
+          };
+        }
+        if (url.includes("/pgc/player/web/playurl")) {
+          return {
+            data: {
+              code: 0,
+              message: "success",
+              result: {
+                code: 0,
+                quality: 64,
+                format: "mp4",
+                accept_quality: [80, 64, 32, 16],
+                accept_description: ["1080P", "720P", "480P", "360P"],
+                durl: [
+                  {
+                    url: "http://upos-sz-mirrorcos.bilivideo.com/video.mp4?token=primary",
+                    backup_url: ["https://upos-sz-mirrorali.bilivideo.com/video.mp4?token=backup"],
                   },
                 ],
               },
@@ -137,11 +162,15 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "forward.bilibili.tv.search");
   assert.equal(sandbox.WidgetMetadata.title, "B站影视搜索");
-  assert.equal(sandbox.WidgetMetadata.version, "1.1.1");
+  assert.equal(sandbox.WidgetMetadata.version, "1.2.0");
   assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.2");
-  assert.equal(sandbox.WidgetMetadata.modules.length, 1);
-  assert.equal(sandbox.WidgetMetadata.modules[0].id, "searchBilibiliTv");
-  assert.equal(sandbox.WidgetMetadata.modules[0].functionName, "search");
+  assert.equal(sandbox.WidgetMetadata.modules.length, 2);
+  assert.equal(sandbox.WidgetMetadata.modules[0].id, "loadResource");
+  assert.equal(sandbox.WidgetMetadata.modules[0].functionName, "loadResource");
+  assert.equal(sandbox.WidgetMetadata.modules[0].type, "stream");
+  assert.equal(sandbox.WidgetMetadata.modules[0].cacheDuration, 0);
+  assert.equal(sandbox.WidgetMetadata.modules[1].id, "searchBilibiliTv");
+  assert.equal(sandbox.WidgetMetadata.modules[1].functionName, "search");
   assert.equal(sandbox.WidgetMetadata.globalParams[0].name, "bilibiliCookie");
   assert.equal(sandbox.WidgetMetadata.globalParams[0].placeholders, undefined);
   assert.equal(sandbox.WidgetMetadata.search.functionName, "search");
@@ -189,8 +218,26 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(detail.episodeItems.length, 1);
   assert.equal(detail.episodeItems[0].title, "第1集 · 凡人风起天南");
   assert.match(detail.episodeItems[0].id, /^https:\/\//);
+  assert.equal(detail.episodeItems[0].link, "bilibili-play:28747:733316:478818261:1022370693");
   assert.equal(detail.stills, undefined);
   assert.equal(await sandbox.loadDetail("iqiyi:1"), null);
+
+  const resources = await sandbox.loadResource({
+    link: detail.episodeItems[0].link,
+    bilibiliCookie: TEST_COOKIE,
+  });
+  const playCall = calls.find((call) => call.url.includes("/pgc/player/web/playurl"));
+  assert.equal(playCall.options.params.avid, "478818261");
+  assert.equal(playCall.options.params.cid, "1022370693");
+  assert.equal(playCall.options.params.ep_id, "733316");
+  assert.equal(playCall.options.params.qn, 127);
+  assert.equal(playCall.options.headers.Cookie, TEST_COOKIE);
+  assert.equal(resources.length, 2);
+  assert.match(resources[0].name, /720P/);
+  assert.match(resources[0].url, /^https:\/\//);
+  assert.equal(resources[0].playerType, "app");
+  assert.equal(resources[0].customHeaders.Cookie, undefined, "Cookie 不得发送给视频 CDN");
+  assert.equal((await sandbox.loadResource({ link: "iqiyi-play:1:abc:x" })).length, 0);
 
   const movieResults = await sandbox.search({
     keyword: "霸王别姬",
