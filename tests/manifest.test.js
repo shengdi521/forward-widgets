@@ -9,6 +9,7 @@ const root = path.resolve(__dirname, "..");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "forward-widgets.fwd"), "utf8"));
 
 assert.equal(manifest.widgets.length, 2);
+assert.ok(manifest.widgets.every((entry) => entry.version === "1.1.0"));
 
 for (const entry of manifest.widgets) {
   const filename = new URL(entry.url).pathname.split("/").pop();

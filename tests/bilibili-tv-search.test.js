@@ -13,6 +13,7 @@ const TEST_COOKIE = "test-cookie-bilibili";
 const searchRow = {
   season_id: 28747,
   title: '<em class="keyword">凡人修仙传</em>',
+  season_type: 4,
   season_type_name: "国创",
   cover: "http://i0.hdslb.com/poster.jpg",
   areas: "中国大陆",
@@ -25,6 +26,21 @@ const searchRow = {
   eps: [{ cover: "http://i0.hdslb.com/episode.jpg" }],
 };
 
+const movieRow = {
+  season_id: 33133,
+  title: '<em class="keyword">霸王别姬</em>',
+  season_type: 2,
+  season_type_name: "电影",
+  cover: "http://i0.hdslb.com/movie-poster.jpg",
+  areas: "中国大陆",
+  styles: "剧情",
+  desc: "经典电影",
+  goto_url: "https://www.bilibili.com/bangumi/play/ep317650?theme=movie",
+  pubtime: 946656000,
+  media_score: { score: 9.9 },
+  eps: [{ cover: "http://i0.hdslb.com/movie-backdrop.jpg" }],
+};
+
 const sandbox = {
   WidgetMetadata: undefined,
   console: { log() {}, warn() {}, error() {} },
@@ -33,9 +49,37 @@ const sandbox = {
       get: async (url, options) => {
         calls.push({ url, options });
         if (url.includes("/search/type")) {
-          return { data: { code: 0, message: "OK", data: { result: [searchRow] } } };
+          const result = options.params.search_type === "media_ft" ? [movieRow] : [searchRow];
+          return { data: { code: 0, message: "OK", data: { result } } };
         }
         if (url.includes("/pgc/view/web/season")) {
+          if (String(options.params.season_id) === "33133") {
+            return {
+              data: {
+                code: 0,
+                result: {
+                  season_id: 33133,
+                  type: 2,
+                  title: "霸王别姬",
+                  cover: "https://i0.hdslb.com/movie-poster.jpg",
+                  evaluate: "经典电影",
+                  share_url: "https://www.bilibili.com/bangumi/play/ss33133",
+                  publish: { pub_time: "1993-01-01 00:00:00" },
+                  rating: { score: 9.9 },
+                  episodes: [
+                    {
+                      id: 317650,
+                      title: "正片",
+                      long_title: "",
+                      link: "https://www.bilibili.com/bangumi/play/ep317650?theme=movie",
+                      cover: "https://i0.hdslb.com/movie-backdrop.jpg",
+                      badge: "会员",
+                    },
+                  ],
+                },
+              },
+            };
+          }
           return {
             data: {
               code: 0,
@@ -79,7 +123,8 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "forward.bilibili.tv.search");
-  assert.equal(sandbox.WidgetMetadata.version, "1.0.1");
+  assert.equal(sandbox.WidgetMetadata.title, "B站影视搜索");
+  assert.equal(sandbox.WidgetMetadata.version, "1.1.0");
   assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.2");
   assert.equal(sandbox.WidgetMetadata.modules.length, 1);
   assert.equal(sandbox.WidgetMetadata.modules[0].id, "searchBilibiliTv");
@@ -104,11 +149,14 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(calls[0].options.params.page, 2);
   assert.equal(calls[0].options.headers.Cookie, TEST_COOKIE);
 
-  assert.equal(results.length, 1, "重复 season_id 应去重");
+  assert.equal(results.length, 2, "应同时返回番剧/国创和电影");
   assert.equal(results[0].title, "凡人修仙传");
   assert.equal(results[0].type, "url");
   assert.equal(results[0].mediaType, "tv");
   assert.equal(results[0].link, "bilibili:28747");
+  assert.equal(results[1].title, "霸王别姬");
+  assert.equal(results[1].mediaType, "movie");
+  assert.equal(results[1].link, "bilibili:33133");
   assert.match(results[0].posterPath, /^https:\/\//);
   assert.equal(results[0].stills, undefined);
   assert.equal(results[0].recommendations, undefined);
@@ -125,10 +173,38 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(detail.stills, undefined);
   assert.equal(await sandbox.loadDetail("iqiyi:1"), null);
 
+  const movieResults = await sandbox.search({
+    keyword: "霸王别姬",
+    page: 1,
+    contentType: "movie",
+    bilibiliCookie: TEST_COOKIE,
+  });
+  const searchCalls = calls.filter((call) => call.url.includes("/search/type"));
+  assert.equal(searchCalls.length, 3);
+  assert.equal(searchCalls[2].options.params.search_type, "media_ft");
+  assert.equal(movieResults.length, 1);
+  assert.equal(movieResults[0].mediaType, "movie");
+
+  const legacyMediaResults = await sandbox.search({
+    keyword: "霸王别姬",
+    page: 1,
+    contentType: "media_ft",
+    bilibiliCookie: TEST_COOKIE,
+  });
+  assert.equal(legacyMediaResults.length, 1, "应兼容 1.0.1 保存的影视筛选值");
+  assert.equal(calls.filter((call) => call.url.includes("/search/type")).length, 4);
+
+  const movieDetail = await sandbox.loadDetail(movieResults[0].link);
+  assert.equal(movieDetail.mediaType, "movie");
+  assert.equal(movieDetail.episodeItems.length, 1);
+  assert.equal(movieDetail.episodeItems[0].mediaType, "movie");
+  assert.equal(movieDetail.episodeItems[0].title, "正片");
+  assert.equal(movieDetail.episodeItems[0].episode, undefined);
+
   console.log("OK bilibili-tv-search", {
-    searchRequests: 2,
+    searchRequests: 4,
     results: results.length,
-    episodes: detail.episodeItems.length,
+    detailChecks: 2,
   });
 })().catch((error) => {
   console.error(error);
