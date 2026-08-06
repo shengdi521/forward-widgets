@@ -80,9 +80,8 @@ async function runCases(platform, sandbox, cases, cookieName, cookieValue) {
   if (JSON.stringify(searchParamNames) !== JSON.stringify(["keyword"])) {
     throw new Error(`${platform} 全局搜索参数会触发客户端表单重建`);
   }
-  const catalog = sandbox.WidgetMetadata.modules.find((module) => module.id === "searchCatalog");
-  if (!catalog || JSON.stringify(Array.from(catalog.params, (param) => param.name)) !== JSON.stringify(["keyword"])) {
-    throw new Error(`${platform} 缺少稳定的“搜索并观看”入口`);
+  if (sandbox.WidgetMetadata.modules.some((module) => module.functionName === sandbox.WidgetMetadata.search.functionName)) {
+    throw new Error(`${platform} 重复注册搜索模块会触发 iPhone/iPad 参数页丢失输入`);
   }
   const rows = [];
   for (const testCase of cases) {

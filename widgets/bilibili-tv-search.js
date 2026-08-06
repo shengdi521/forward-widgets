@@ -1,7 +1,7 @@
 WidgetMetadata = {
   id: "forward.bilibili.tv.search",
   title: "B站影视搜索",
-  version: "1.4.0",
+  version: "1.4.1",
   requiredVersion: "0.0.2",
   description: "使用可选的个人 Cookie 搜索并在线观看 B站官方影视；自动请求账号可达的最高清晰度，并加载可用的官方字幕。",
   author: "Custom",
@@ -31,16 +31,6 @@ WidgetMetadata = {
       type: "subtitle",
       cacheDuration: 0,
       params: [],
-    },
-    {
-      id: "searchCatalog",
-      title: "搜索并观看",
-      description: "输入影视名称，结果可直接选择正片或分集播放。",
-      functionName: "search",
-      cacheDuration: 0,
-      params: [
-        { name: "keyword", title: "影视名称", type: "input" },
-      ],
     },
   ],
   search: {

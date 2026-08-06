@@ -9,8 +9,8 @@ const root = path.resolve(__dirname, "..");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "forward-widgets.fwd"), "utf8"));
 
 assert.equal(manifest.widgets.length, 2);
-assert.equal(manifest.widgets.find((entry) => entry.id === "forward.bilibili.tv.search").version, "1.4.0");
-assert.equal(manifest.widgets.find((entry) => entry.id === "forward.iqiyi.tv.search").version, "1.4.0");
+assert.equal(manifest.widgets.find((entry) => entry.id === "forward.bilibili.tv.search").version, "1.4.1");
+assert.equal(manifest.widgets.find((entry) => entry.id === "forward.iqiyi.tv.search").version, "1.4.1");
 
 for (const entry of manifest.widgets) {
   const filename = new URL(entry.url).pathname.split("/").pop();
@@ -46,9 +46,11 @@ for (const entry of manifest.widgets) {
     ["keyword"],
     `${filename} 全局搜索应只保留稳定的关键词输入框`,
   );
-  const catalog = metadata.modules.find((module) => module.id === "searchCatalog");
-  assert.ok(catalog, `${filename} 缺少搜索并观看入口`);
-  assert.deepEqual(Array.from(catalog.params, (param) => param.name), ["keyword"]);
+  assert.equal(
+    metadata.modules.some((module) => module.functionName === metadata.search.functionName),
+    false,
+    `${filename} 不得把顶层搜索重复注册成普通模块`,
+  );
 }
 
 console.log("OK forward-widgets.fwd", {
