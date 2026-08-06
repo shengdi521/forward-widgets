@@ -23,7 +23,13 @@ const searchRow = {
   goto_url: "https://www.bilibili.com/bangumi/play/ss28747",
   pubtime: 1595606400,
   media_score: { score: 9.7 },
-  eps: [{ cover: "http://i0.hdslb.com/episode.jpg" }],
+  eps: [{
+    id: 733316,
+    title: "1",
+    long_title: "凡人风起天南",
+    url: "https://www.bilibili.com/bangumi/play/ep733316",
+    cover: "http://i0.hdslb.com/episode.jpg",
+  }],
 };
 
 const movieRow = {
@@ -38,7 +44,7 @@ const movieRow = {
   goto_url: "https://www.bilibili.com/bangumi/play/ep317650?theme=movie",
   pubtime: 946656000,
   media_score: { score: 9.9 },
-  eps: [{ cover: "http://i0.hdslb.com/movie-backdrop.jpg" }],
+  eps: null,
 };
 
 const sandbox = {
@@ -193,9 +199,9 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "forward.bilibili.tv.search");
   assert.equal(sandbox.WidgetMetadata.title, "B站影视搜索");
-  assert.equal(sandbox.WidgetMetadata.version, "1.3.1");
+  assert.equal(sandbox.WidgetMetadata.version, "1.4.0");
   assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.2");
-  assert.equal(sandbox.WidgetMetadata.modules.length, 2);
+  assert.equal(sandbox.WidgetMetadata.modules.length, 3);
   assert.equal(sandbox.WidgetMetadata.modules[0].id, "loadResource");
   assert.equal(sandbox.WidgetMetadata.modules[0].functionName, "loadResource");
   assert.equal(sandbox.WidgetMetadata.modules[0].type, "stream");
@@ -203,14 +209,21 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(sandbox.WidgetMetadata.modules[1].id, "loadSubtitle");
   assert.equal(sandbox.WidgetMetadata.modules[1].functionName, "loadSubtitle");
   assert.equal(sandbox.WidgetMetadata.modules[1].type, "subtitle");
-  assert.equal(sandbox.WidgetMetadata.modules.some((module) => module.functionName === "search"), false);
+  assert.equal(sandbox.WidgetMetadata.modules[2].id, "searchCatalog");
+  assert.equal(sandbox.WidgetMetadata.modules[2].functionName, "search");
+  assert.equal(sandbox.WidgetMetadata.modules[2].cacheDuration, 0);
+  assert.deepEqual(
+    Array.from(sandbox.WidgetMetadata.modules[2].params, (param) => param.name),
+    ["keyword"],
+  );
   assert.equal(sandbox.WidgetMetadata.globalParams[0].name, "bilibiliCookie");
   assert.equal(sandbox.WidgetMetadata.globalParams[0].placeholders, undefined);
   assert.equal(sandbox.WidgetMetadata.search.functionName, "search");
   assert.deepEqual(
     Array.from(sandbox.WidgetMetadata.search.params, (param) => param.name),
-    ["keyword", "page"],
+    ["keyword"],
   );
+  await assert.rejects(() => sandbox.search({ keyword: "  " }), /请输入要搜索的影视名称/);
   assert.equal(sandbox.bilibiliMd5("abc"), "900150983cd24fb0d6963f7d28e17f72");
 
   const results = await sandbox.search({
@@ -239,6 +252,8 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(results[0].type, "url");
   assert.equal(results[0].mediaType, "tv");
   assert.equal(results[0].link, "bilibili:28747");
+  assert.equal(results[0].episodeItems.length, 1);
+  assert.equal(results[0].episodeItems[0].link, "bilibili-play:28747:733316::");
   assert.equal(results[1].title, "霸王别姬");
   assert.equal(results[1].mediaType, "movie");
   assert.equal(results[1].link, "bilibili:33133");
@@ -246,6 +261,13 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(results[0].stills, undefined);
   assert.equal(results[0].recommendations, undefined);
   assert.ok(!JSON.stringify(Array.from(stored.values())).includes(TEST_COOKIE), "缓存不得包含 Cookie");
+
+  const directResources = await sandbox.loadResource({
+    link: results[0].episodeItems[0].link,
+    bilibiliCookie: TEST_COOKIE,
+  });
+  assert.equal(directResources.length, 2, "搜索结果中的命中分集应能直接起播");
+  assert.match(directResources[0].name, /账号当前最高/);
 
   const detail = await sandbox.loadDetail(results[0].link);
   const detailCall = calls.find((call) => call.url.includes("/pgc/view/web/season"));
@@ -300,8 +322,10 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   const searchCalls = calls.filter((call) => call.url.includes("/search/type"));
   assert.equal(searchCalls.length, 3);
   assert.equal(searchCalls[2].options.params.search_type, "media_ft");
+  assert.equal(searchCalls[2].options.params.keyword, "霸王别姬", "第二次搜索必须使用新关键词");
   assert.equal(movieResults.length, 1);
   assert.equal(movieResults[0].mediaType, "movie");
+  assert.equal(movieResults[0].episodeItems[0].link, "bilibili-play:33133:317650::");
 
   const legacyMediaResults = await sandbox.search({
     keyword: "霸王别姬",

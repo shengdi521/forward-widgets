@@ -1,12 +1,12 @@
 WidgetMetadata = {
   id: "forward.bilibili.tv.search",
   title: "B站影视搜索",
-  version: "1.3.1",
+  version: "1.4.0",
   requiredVersion: "0.0.2",
   description: "使用可选的个人 Cookie 搜索并在线观看 B站官方影视；自动请求账号可达的最高清晰度，并加载可用的官方字幕。",
   author: "Custom",
   site: "https://www.bilibili.com",
-  detailCacheDuration: 300,
+  detailCacheDuration: 0,
   globalParams: [
     {
       name: "bilibiliCookie",
@@ -32,13 +32,22 @@ WidgetMetadata = {
       cacheDuration: 0,
       params: [],
     },
+    {
+      id: "searchCatalog",
+      title: "搜索并观看",
+      description: "输入影视名称，结果可直接选择正片或分集播放。",
+      functionName: "search",
+      cacheDuration: 0,
+      params: [
+        { name: "keyword", title: "影视名称", type: "input" },
+      ],
+    },
   ],
   search: {
     title: "搜索 B站影视",
     functionName: "search",
     params: [
       { name: "keyword", title: "影视名称", type: "input" },
-      { name: "page", title: "页码", type: "page" },
     ],
   },
 };
@@ -49,7 +58,8 @@ var BILIBILI_NAV_API = "https://api.bilibili.com/x/web-interface/nav";
 var BILIBILI_SEASON_API = "https://api.bilibili.com/pgc/view/web/season";
 var BILIBILI_PLAY_API = "https://api.bilibili.com/pgc/player/web/playurl";
 var BILIBILI_PLAYER_V2_API = "https://api.bilibili.com/x/player/v2";
-var BILIBILI_CACHE_PREFIX = "bilibili-tv-detail:";
+var BILIBILI_CACHE_PREFIX = "bilibili-tv-detail:v2:";
+var BILIBILI_PLAY_ROUTE_CACHE_PREFIX = "bilibili-play-route:v1:";
 var lastBilibiliCookie = "";
 var cachedBilibiliWbiKeys = null;
 var cachedBilibiliWbiKeysAt = 0;
@@ -267,6 +277,19 @@ function bilibiliMediaType(row) {
   return bilibiliCategory(row) === "movie" ? "movie" : "tv";
 }
 
+function bilibiliPlayRoute(seasonId, epId, aid, cid) {
+  if (!/^\d+$/.test(String(seasonId || "")) || !/^\d+$/.test(String(epId || ""))) {
+    return "";
+  }
+  return [
+    "bilibili-play",
+    String(seasonId),
+    String(epId),
+    /^\d+$/.test(String(aid || "")) ? String(aid) : "",
+    /^\d+$/.test(String(cid || "")) ? String(cid) : "",
+  ].join(":");
+}
+
 function bilibiliSearchTypes(contentType) {
   if (contentType === "anime" || contentType === "media_bangumi") return ["media_bangumi"];
   if (contentType === "movie" || contentType === "tv" ||
@@ -288,16 +311,34 @@ function mapBilibiliSearchItem(row) {
     "https://www.bilibili.com/bangumi/play/ss" + seasonId;
   var episodeCover = row.eps && row.eps[0] ? httpsUrl(row.eps[0].cover) : "";
   var score = row.media_score ? Number(row.media_score.score || 0) : 0;
+  var mediaType = bilibiliMediaType(row);
+  var episodes = Array.isArray(row.eps)
+    ? row.eps.map(function (episode, index) {
+        return mapBilibiliEpisode(episode, index, mediaType, seasonId);
+      }).filter(function (episode) { return !!(episode && episode.link); })
+    : [];
+  if (!episodes.length) {
+    var pageEpisodeMatch = pageUrl.match(/\/bangumi\/play\/ep(\d+)/i);
+    if (pageEpisodeMatch) {
+      episodes.push(mapBilibiliEpisode({
+        id: pageEpisodeMatch[1],
+        title: mediaType === "movie" ? "正片" : "命中分集",
+        url: pageUrl,
+        cover: row.cover,
+      }, 0, mediaType, seasonId));
+    }
+  }
   var item = {
     id: pageUrl,
     type: "url",
-    mediaType: bilibiliMediaType(row),
+    mediaType: mediaType,
     title: cleanText(row.title || row.org_title),
     posterPath: httpsUrl(row.cover),
     backdropPath: episodeCover || httpsUrl(row.cover),
     description: buildSearchDescription(row),
     releaseDate: formatDateFromUnix(row.pubtime),
     link: "bilibili:" + seasonId,
+    episodeItems: episodes,
   };
   if (score) item.rating = score;
   return item;
@@ -321,7 +362,7 @@ function readCachedDetail(link) {
 
 async function search(params = {}) {
   var keyword = String(params.keyword || params.query || params.title || "").trim();
-  if (!keyword) return [];
+  if (!keyword) throw new Error("请输入要搜索的影视名称");
 
   var page = Math.max(1, Number(params.page || 1));
   var requestedType = String(params.contentType || "all");
@@ -394,15 +435,16 @@ async function search(params = {}) {
 }
 
 function mapBilibiliEpisode(episode, index, mediaType, seasonId) {
-  var pageUrl = httpsUrl(episode.link) ||
+  var pageUrl = httpsUrl(episode.link || episode.url) ||
     "https://www.bilibili.com/bangumi/play/ep" + String(episode.id || "");
-  var episodeNumber = cleanText(episode.title) || String(index + 1);
+  var episodeNumber = cleanText(episode.title || episode.index_title) || String(index + 1);
   var longTitle = cleanText(episode.long_title);
   var numericEpisode = /^\d+(?:\.\d+)?$/.test(episodeNumber);
   var title = mediaType === "movie" || !numericEpisode
     ? episodeNumber + (longTitle ? " · " + longTitle : "")
     : "第" + episodeNumber + "集" + (longTitle ? " · " + longTitle : "");
   var badge = cleanText(episode.badge || (episode.badge_info && episode.badge_info.text));
+  var route = bilibiliPlayRoute(seasonId, episode.id, episode.aid, episode.cid);
   var item = {
     id: pageUrl,
     type: "url",
@@ -411,14 +453,16 @@ function mapBilibiliEpisode(episode, index, mediaType, seasonId) {
     backdropPath: httpsUrl(episode.cover),
     description: badge ? "B站官方页面 · " + badge : "B站官方页面",
     releaseDate: formatDateFromUnix(episode.pub_time),
-    link: [
-      "bilibili-play",
-      String(seasonId || ""),
-      String(episode.id || ""),
-      String(episode.aid || ""),
-      String(episode.cid || ""),
-    ].join(":"),
   };
+  if (route) item.link = route;
+  if (route && episode.aid && episode.cid) {
+    cacheBilibiliPlayRoute(route, {
+      seasonId: String(seasonId),
+      epId: String(episode.id),
+      aid: String(episode.aid),
+      cid: String(episode.cid),
+    });
+  }
   if (numericEpisode) item.episode = Number(episodeNumber);
   return item;
 }
@@ -503,18 +547,81 @@ function bilibiliPlaybackHeaders(epId) {
   };
 }
 
+function bilibiliPlayRouteCacheKey(playRoute) {
+  return BILIBILI_PLAY_ROUTE_CACHE_PREFIX + playRoute.seasonId + ":" + playRoute.epId;
+}
+
+function cacheBilibiliPlayRoute(route, resolved) {
+  var playRoute = parseBilibiliPlayRoute(route);
+  if (!playRoute || !resolved || !resolved.aid || !resolved.cid) return;
+  try {
+    Widget.storage.set(bilibiliPlayRouteCacheKey(playRoute), resolved);
+  } catch (error) {
+    console.warn("[B站播放] 缓存分集参数失败:", error.message || error);
+  }
+}
+
+function readCachedBilibiliPlayRoute(playRoute) {
+  try {
+    var cached = Widget.storage.get(bilibiliPlayRouteCacheKey(playRoute));
+    return cached && cached.aid && cached.cid ? cached : null;
+  } catch (error) {
+    return null;
+  }
+}
+
 function parseBilibiliPlayRoute(link) {
   var route = String(link || "");
   if (route.indexOf("bilibili-play:") !== 0) return null;
   var parts = route.split(":");
-  if (parts.length !== 5 || !/^\d+$/.test(parts[2]) ||
-      !/^\d+$/.test(parts[3]) || !/^\d+$/.test(parts[4])) return null;
+  if (parts.length !== 5 || !/^\d+$/.test(parts[1]) || !/^\d+$/.test(parts[2]) ||
+      (parts[3] && !/^\d+$/.test(parts[3])) ||
+      (parts[4] && !/^\d+$/.test(parts[4]))) return null;
   return {
     seasonId: parts[1],
     epId: parts[2],
     aid: parts[3],
     cid: parts[4],
   };
+}
+
+async function resolveBilibiliPlayRoute(playRoute) {
+  if (playRoute.aid && playRoute.cid) return playRoute;
+  var cached = readCachedBilibiliPlayRoute(playRoute);
+  if (cached) return cached;
+
+  var response = await Widget.http.get(BILIBILI_SEASON_API, {
+    headers: bilibiliHeaders(lastBilibiliCookie, "https://www.bilibili.com/"),
+    params: { season_id: playRoute.seasonId },
+  });
+  var body = response && response.data;
+  var data = body && body.result;
+  if (!body || Number(body.code) !== 0 || !data) {
+    throw new Error(body && body.message ? body.message : "无法补充分集播放参数");
+  }
+  var episodes = Array.isArray(data.episodes)
+    ? data.episodes
+    : (data.main_section && Array.isArray(data.main_section.episodes)
+      ? data.main_section.episodes
+      : []);
+  var selected = null;
+  for (var index = 0; index < episodes.length; index += 1) {
+    var episode = episodes[index] || {};
+    if (!episode.id || !episode.aid || !episode.cid) continue;
+    var resolved = {
+      seasonId: String(playRoute.seasonId),
+      epId: String(episode.id),
+      aid: String(episode.aid),
+      cid: String(episode.cid),
+    };
+    cacheBilibiliPlayRoute(
+      bilibiliPlayRoute(resolved.seasonId, resolved.epId, resolved.aid, resolved.cid),
+      resolved
+    );
+    if (resolved.epId === playRoute.epId) selected = resolved;
+  }
+  if (!selected) throw new Error("未找到搜索结果对应的可播放分集");
+  return selected;
 }
 
 function isOfficialBilibiliSubtitleUrl(value) {
@@ -540,6 +647,7 @@ async function loadSubtitle(params = {}) {
   if (runtimeCookie) lastBilibiliCookie = runtimeCookie;
 
   try {
+    playRoute = await resolveBilibiliPlayRoute(playRoute);
     var response = await Widget.http.get(BILIBILI_PLAYER_V2_API, {
       headers: bilibiliHeaders(
         lastBilibiliCookie,
@@ -584,13 +692,14 @@ async function loadResource(params = {}) {
     throw new Error("B站播放参数不完整，请重新打开影视详情后选择分集");
   }
 
-  var epId = playRoute.epId;
-  var aid = playRoute.aid;
-  var cid = playRoute.cid;
   var runtimeCookie = sanitizeCookie(params.bilibiliCookie);
   if (runtimeCookie) lastBilibiliCookie = runtimeCookie;
 
   try {
+    playRoute = await resolveBilibiliPlayRoute(playRoute);
+    var epId = playRoute.epId;
+    var aid = playRoute.aid;
+    var cid = playRoute.cid;
     var response = await Widget.http.get(BILIBILI_PLAY_API, {
       headers: bilibiliHeaders(lastBilibiliCookie, "https://www.bilibili.com/bangumi/play/ep" + epId),
       params: {

@@ -1,12 +1,12 @@
 WidgetMetadata = {
   id: "forward.iqiyi.tv.search",
   title: "爱奇艺影视搜索",
-  version: "1.3.1",
+  version: "1.4.0",
   requiredVersion: "0.0.2",
   description: "使用可选的个人 Cookie 搜索并在线观看爱奇艺官方影视；自动优先账号可达的最高清晰度，并支持可用音轨和字幕切换。",
   author: "Custom",
   site: "https://www.iqiyi.com",
-  detailCacheDuration: 300,
+  detailCacheDuration: 0,
   globalParams: [
     {
       name: "iqiyiCookie",
@@ -32,13 +32,22 @@ WidgetMetadata = {
       cacheDuration: 0,
       params: [],
     },
+    {
+      id: "searchCatalog",
+      title: "搜索并观看",
+      description: "输入影视名称，结果可直接选择正片或分集播放。",
+      functionName: "search",
+      cacheDuration: 0,
+      params: [
+        { name: "keyword", title: "影视名称", type: "input" },
+      ],
+    },
   ],
   search: {
     title: "搜索爱奇艺影视",
     functionName: "search",
     params: [
       { name: "keyword", title: "影视名称", type: "input" },
-      { name: "page", title: "页码", type: "page" },
     ],
   },
 };
@@ -48,7 +57,7 @@ var IQIYI_EPISODE_API = "https://pcw-api.iqiyi.com/albums/album/avlistinfo";
 var IQIYI_PLAY_API = "https://cache.m.iqiyi.com/jp/tmts/";
 var IQIYI_PLAY_SRC = "76f90cbd92f94a2e925d83e8ccd22cb7";
 var IQIYI_PLAY_KEY = "d5fb4bd9d50c4be6948c97edd7254b0e";
-var IQIYI_CACHE_PREFIX = "iqiyi-tv-detail:";
+var IQIYI_CACHE_PREFIX = "iqiyi-tv-detail:v2:";
 var lastIqiyiCookie = "";
 
 function sanitizeCookie(value) {
@@ -233,8 +242,9 @@ function mapMeshEpisode(video, index, mediaType) {
 
 function mapIqiyiSearchItem(album) {
   var albumId = String(album.qipuId || "");
-  var pageUrl = httpsUrl(album.pageUrl || album.itemLink || album.albumUrl);
   if (!albumId) return null;
+  var pageUrl = httpsUrl(album.pageUrl || album.itemLink || album.albumUrl) ||
+    "https://www.iqiyi.com/a_" + albumId + ".html";
   var category = iqiyiCategory(album);
   var mediaType = category === "movie" ? "movie" : "tv";
   var year = album.year && album.year.value ? String(album.year.value) : "";
@@ -271,7 +281,7 @@ function mapIqiyiSearchItem(album) {
   }
   var peoples = mapPeople(album.actors, "主演").concat(mapPeople(album.directors, "导演"));
   var item = {
-    id: pageUrl || "iqiyi-album:" + albumId,
+    id: pageUrl,
     type: "url",
     mediaType: mediaType,
     title: cleanText(album.title),
@@ -309,7 +319,7 @@ function readCachedDetail(link) {
 
 async function search(params = {}) {
   var keyword = String(params.keyword || params.query || params.title || "").trim();
-  if (!keyword) return [];
+  if (!keyword) throw new Error("请输入要搜索的影视名称");
   var page = Math.max(1, Number(params.page || 1));
   var requestedType = String(params.contentType || "all");
   lastIqiyiCookie = sanitizeCookie(params.iqiyiCookie);

@@ -70,12 +70,20 @@ async function probeSubtitle(subtitle) {
   };
 }
 
-function firstPlayableEpisode(detail, fallback) {
-  return [...(detail?.episodeItems || []), ...(fallback?.episodeItems || [])]
+function firstPlayableEpisode(primary, fallback) {
+  return [...(primary?.episodeItems || []), ...(fallback?.episodeItems || [])]
     .find((item) => /^(?:bilibili|iqiyi)-play:/.test(String(item.link || "")));
 }
 
 async function runCases(platform, sandbox, cases, cookieName, cookieValue) {
+  const searchParamNames = Array.from(sandbox.WidgetMetadata.search.params, (param) => param.name);
+  if (JSON.stringify(searchParamNames) !== JSON.stringify(["keyword"])) {
+    throw new Error(`${platform} 全局搜索参数会触发客户端表单重建`);
+  }
+  const catalog = sandbox.WidgetMetadata.modules.find((module) => module.id === "searchCatalog");
+  if (!catalog || JSON.stringify(Array.from(catalog.params, (param) => param.name)) !== JSON.stringify(["keyword"])) {
+    throw new Error(`${platform} 缺少稳定的“搜索并观看”入口`);
+  }
   const rows = [];
   for (const testCase of cases) {
     const params = {
@@ -87,9 +95,8 @@ async function runCases(platform, sandbox, cases, cookieName, cookieValue) {
     const results = await sandbox.search(params);
     if (!results.length) throw new Error(`${platform} ${testCase.contentType}“${testCase.keyword}”无搜索结果`);
     const item = results[0];
-    const detail = await sandbox.loadDetail(item.link);
-    const episode = firstPlayableEpisode(detail, item);
-    if (!episode) throw new Error(`${platform} ${item.title} 没有可播放分集路由`);
+    const episode = firstPlayableEpisode(item);
+    if (!episode) throw new Error(`${platform} ${item.title} 搜索结果不能直接进入播放`);
     const resources = await sandbox.loadResource({ link: episode.link, [cookieName]: cookieValue || "" });
     if (!resources.length) throw new Error(`${platform} ${item.title} 没有播放线路`);
     if (!/账号当前最高/.test(String(resources[0].name || ""))) {
@@ -97,6 +104,9 @@ async function runCases(platform, sandbox, cases, cookieName, cookieValue) {
     }
     const probe = await probeResource(resources[0]);
     if (!probe.valid) throw new Error(`${platform} ${item.title} 播放线路探测失败：HTTP ${probe.status}`);
+    const detail = await sandbox.loadDetail(item.link);
+    const detailEpisode = firstPlayableEpisode(detail, item);
+    if (!detailEpisode) throw new Error(`${platform} ${item.title} 详情页没有可播放分集路由`);
     const subtitles = await sandbox.loadSubtitle({ link: episode.link, [cookieName]: cookieValue || "" });
     const subtitleProbes = [];
     for (const subtitle of subtitles) {
@@ -111,6 +121,7 @@ async function runCases(platform, sandbox, cases, cookieName, cookieValue) {
       type: testCase.contentType,
       keyword: testCase.keyword,
       title: item.title,
+      directFromSearch: true,
       episodes: detail?.episodeItems?.length || item.episodeItems?.length || 0,
       resources: resources.length,
       subtitles: subtitles.length,
