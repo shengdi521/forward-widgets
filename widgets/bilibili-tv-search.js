@@ -1,7 +1,7 @@
 WidgetMetadata = {
   id: "forward.bilibili.tv.search",
   title: "B站影视搜索",
-  version: "1.4.1",
+  version: "1.4.2",
   requiredVersion: "0.0.2",
   description: "使用可选的个人 Cookie 搜索并在线观看 B站官方影视；自动请求账号可达的最高清晰度，并加载可用的官方字幕。",
   author: "Custom",
@@ -530,11 +530,95 @@ function bilibiliQualityLabel(result) {
   return fallback[quality] || (quality ? "清晰度 " + quality : "自动清晰度");
 }
 
+function bilibiliHighestAcceptedQuality(result) {
+  var qualities = result && Array.isArray(result.accept_quality) ? result.accept_quality : [];
+  return qualities.reduce(function (highest, quality) {
+    return Math.max(highest, Number(quality || 0));
+  }, 0);
+}
+
+function bilibiliMixedStreamFormat(result) {
+  return /flv/i.test(String(result && result.format || "")) ? "FLV" : "MP4";
+}
+
+function hasSingleBilibiliDurl(result) {
+  var durls = result && Array.isArray(result.durl) ? result.durl : [];
+  return durls.length === 1 && !!durls[0].url;
+}
+
 function bilibiliPlaybackHeaders(epId) {
   return {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/136 Safari/537.36",
     Referer: "https://www.bilibili.com/bangumi/play/ep" + epId,
   };
+}
+
+async function requestBilibiliPlayResult(playRoute, quality, fnval, format) {
+  var response = await Widget.http.get(BILIBILI_PLAY_API, {
+    headers: bilibiliHeaders(
+      lastBilibiliCookie,
+      "https://www.bilibili.com/bangumi/play/ep" + playRoute.epId
+    ),
+    params: {
+      avid: playRoute.aid,
+      cid: playRoute.cid,
+      ep_id: playRoute.epId,
+      qn: quality,
+      type: format,
+      otype: "json",
+      fnver: 0,
+      fnval: fnval,
+      fourk: 1,
+    },
+  });
+  var body = response && response.data;
+  var result = body && body.result;
+  if (!body || Number(body.code) !== 0 || !result ||
+      (result.code !== undefined && Number(result.code) !== 0)) {
+    throw new Error((result && result.message) || (body && body.message) || "平台未返回播放地址");
+  }
+  return result;
+}
+
+async function loadBestBilibiliMixedStream(playRoute) {
+  var highestFlv = null;
+  try {
+    highestFlv = await requestBilibiliPlayResult(playRoute, 127, 4049, "flv");
+    var advertisedQuality = bilibiliHighestAcceptedQuality(highestFlv);
+    var actualQuality = Number(highestFlv.quality || 0);
+    if (advertisedQuality > actualQuality && advertisedQuality <= 127) {
+      try {
+        var exactFlv = await requestBilibiliPlayResult(
+          playRoute,
+          advertisedQuality,
+          4049,
+          "flv"
+        );
+        if (hasSingleBilibiliDurl(exactFlv) &&
+            Number(exactFlv.quality || 0) > actualQuality) {
+          highestFlv = exactFlv;
+        }
+      } catch (retryError) {
+        console.warn("[B站播放] 精确画质重试失败:", retryError.message || retryError);
+      }
+    }
+    if (hasSingleBilibiliDurl(highestFlv)) return highestFlv;
+  } catch (flvError) {
+    console.warn("[B站播放] 高清混流请求失败，改用 MP4 兼容线路:", flvError.message || flvError);
+  }
+
+  var fallback = await requestBilibiliPlayResult(playRoute, 127, 1, "mp4");
+  if (hasSingleBilibiliDurl(fallback)) return fallback;
+
+  var fallbackDurls = Array.isArray(fallback.durl) ? fallback.durl : [];
+  if (fallbackDurls.length > 1 ||
+      (highestFlv && Array.isArray(highestFlv.durl) && highestFlv.durl.length > 1)) {
+    throw new Error("该视频仅返回多段混流，当前 Forward 播放器暂不支持连续拼接");
+  }
+  if (fallback.dash || (highestFlv && highestFlv.dash)) {
+    throw new Error("该视频仅返回分离音视频流，当前 Forward 资源模型无法直接合并");
+  }
+  throw new Error("账号当前没有可播放的官方混流线路，请检查会员权限或地区限制");
 }
 
 function bilibiliPlayRouteCacheKey(playRoute) {
@@ -690,46 +774,20 @@ async function loadResource(params = {}) {
     var epId = playRoute.epId;
     var aid = playRoute.aid;
     var cid = playRoute.cid;
-    var response = await Widget.http.get(BILIBILI_PLAY_API, {
-      headers: bilibiliHeaders(lastBilibiliCookie, "https://www.bilibili.com/bangumi/play/ep" + epId),
-      params: {
-        avid: aid,
-        cid: cid,
-        ep_id: epId,
-        qn: 127,
-        fnver: 0,
-        fnval: 1,
-        fourk: 1,
-      },
-    });
-    var body = response && response.data;
-    var result = body && body.result;
-    if (!body || Number(body.code) !== 0 || !result ||
-        (result.code !== undefined && Number(result.code) !== 0)) {
-      throw new Error((result && result.message) || (body && body.message) || "平台未返回播放地址");
-    }
-
-    var durls = Array.isArray(result.durl) ? result.durl : [];
-    if (durls.length !== 1 || !durls[0].url) {
-      if (result.dash) {
-        throw new Error("该视频仅返回分离音视频流，当前 Forward 播放器无法直接合并");
-      }
-      if (durls.length > 1) {
-        throw new Error("该视频返回多段旧格式流，当前 Forward 播放器暂不支持连续拼接");
-      }
-      throw new Error("账号当前没有可播放的官方 MP4 线路，请检查会员权限或地区限制");
-    }
+    var result = await loadBestBilibiliMixedStream({ epId: epId, aid: aid, cid: cid });
+    var durls = result.durl;
 
     var urls = [durls[0].url].concat(Array.isArray(durls[0].backup_url) ? durls[0].backup_url : []);
     var seen = {};
     var quality = bilibiliQualityLabel(result);
+    var streamFormat = bilibiliMixedStreamFormat(result);
     return urls.map(function (url, index) {
       var playbackUrl = httpsUrl(url);
       if (!playbackUrl || seen[playbackUrl]) return null;
       seen[playbackUrl] = true;
       return {
         name: "B站 " + quality + (index === 0 ? " · 账号当前最高" : " · 同画质备用线路 " + index),
-        description: "B站官方混流 MP4 · 自动请求账号可达最高画质 · 默认音轨",
+        description: "B站官方混流 " + streamFormat + " · 自动请求账号可达最高画质 · 默认音轨",
         url: playbackUrl,
         customHeaders: bilibiliPlaybackHeaders(epId),
         playerType: "app",

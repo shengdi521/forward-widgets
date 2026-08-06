@@ -9,7 +9,7 @@ const root = path.resolve(__dirname, "..");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "forward-widgets.fwd"), "utf8"));
 
 assert.equal(manifest.widgets.length, 2);
-assert.equal(manifest.widgets.find((entry) => entry.id === "forward.bilibili.tv.search").version, "1.4.1");
+assert.equal(manifest.widgets.find((entry) => entry.id === "forward.bilibili.tv.search").version, "1.4.2");
 assert.equal(manifest.widgets.find((entry) => entry.id === "forward.iqiyi.tv.search").version, "1.4.1");
 
 for (const entry of manifest.widgets) {
