@@ -8,7 +8,7 @@ ForwardWidget 全影视在线搜索模块：
 ## 订阅地址
 
 ```text
-https://raw.githubusercontent.com/shengdi521/forward-widgets/main/forward-widgets.fwd?v=1.4.1
+https://raw.githubusercontent.com/shengdi521/forward-widgets/main/forward-widgets.fwd?v=1.4.2
 ```
 
 在手机或 iPad 的 Forward 中添加上述订阅地址，即可看到两个独立模块。
@@ -21,4 +21,4 @@ https://raw.githubusercontent.com/shengdi521/forward-widgets/main/forward-widget
 
 模块仅调用平台官方接口，过滤短视频、用户投稿和站外跳转。点击详情中的正片或分集后，Forward 会动态加载账号当前有权观看的官方播放线路；会员资格、地区限制和试看范围均由平台服务器判定，不绕过 DRM 或会员权限。
 
-Forward 当前没有独立音轨字段，因此爱奇艺的国语、粤语等音轨会显示成不同播放线路；每条音轨均把账号可达的最高清晰度排在第一。B站旧格式 MP4 只有平台混合后的默认音轨，模块不会把不同音频码率伪装成语言音轨。仅在平台返回外置字幕时显示字幕选项；画面内嵌字幕无法关闭或切换。
+Forward 当前没有独立音轨字段，因此爱奇艺的国语、粤语等音轨会显示成不同播放线路；每条音轨均把账号可达的最高清晰度排在第一。B站优先请求可直接播放的最高画质混流 FLV（包含默认音轨），仅在平台只返回分离音视频或多段流时回退到单路 MP4；模块不会把不同音频码率伪装成语言音轨。仅在平台返回外置字幕时显示字幕选项；画面内嵌字幕无法关闭或切换。
