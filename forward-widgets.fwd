@@ -8,9 +8,9 @@
       "title": "B站影视搜索",
       "description": "使用可选的个人 Cookie 搜索并在线观看 B站官方影视；自动请求账号可达的最高清晰度，并加载可用的官方字幕。",
       "requiredVersion": "0.0.2",
-      "version": "1.4.2",
+      "version": "1.4.3",
       "author": "Custom",
-      "url": "https://raw.githubusercontent.com/shengdi521/forward-widgets/main/widgets/bilibili-tv-search.js?v=1.4.2"
+      "url": "https://raw.githubusercontent.com/shengdi521/forward-widgets/main/widgets/bilibili-tv-search.js?v=1.4.3"
     },
     {
       "id": "forward.iqiyi.tv.search",
