@@ -1,7 +1,7 @@
 WidgetMetadata = {
   id: "forward.bilibili.tv.search",
   title: "B站影视搜索",
-  version: "1.4.2",
+  version: "1.4.3",
   requiredVersion: "0.0.2",
   description: "使用可选的个人 Cookie 搜索并在线观看 B站官方影视；自动请求账号可达的最高清晰度，并加载可用的官方字幕。",
   author: "Custom",
@@ -38,6 +38,7 @@ WidgetMetadata = {
     functionName: "search",
     params: [
       { name: "keyword", title: "影视名称", type: "input" },
+      { name: "page", title: "页码", type: "page" },
     ],
   },
 };
@@ -294,6 +295,39 @@ function isBilibiliCategoryFilter(contentType) {
   return ["movie", "tv", "anime", "variety", "documentary"].indexOf(contentType) >= 0;
 }
 
+function mapBilibiliSearchEpisodes(row, mediaType, seasonId) {
+  var episodes = row && Array.isArray(row.eps) ? row.eps : [];
+  if (!episodes.length) return [];
+
+  var hitIds = Array.isArray(row.hit_epids)
+    ? row.hit_epids.map(String)
+    : String(row.hit_epids || "").split(",").map(function (id) { return id.trim(); });
+  var selected = [];
+  var seen = {};
+  function addEpisode(episode, index) {
+    if (!episode) return;
+    var id = String(episode.id || "");
+    if (!id || seen[id]) return;
+    var mapped = mapBilibiliEpisode(episode, index, mediaType, seasonId);
+    if (!mapped || !mapped.link) return;
+    seen[id] = true;
+    selected.push(mapped);
+  }
+
+  for (var hitIndex = 0; hitIndex < hitIds.length && selected.length < 3; hitIndex += 1) {
+    if (!/^\d+$/.test(hitIds[hitIndex])) continue;
+    for (var episodeIndex = 0; episodeIndex < episodes.length; episodeIndex += 1) {
+      if (String(episodes[episodeIndex] && episodes[episodeIndex].id || "") === hitIds[hitIndex]) {
+        addEpisode(episodes[episodeIndex], episodeIndex);
+        break;
+      }
+    }
+  }
+  addEpisode(episodes[0], 0);
+  if (episodes.length > 1) addEpisode(episodes[episodes.length - 1], episodes.length - 1);
+  return selected.slice(0, 3);
+}
+
 function mapBilibiliSearchItem(row) {
   var seasonId = String(row.season_id || row.pgc_season_id || "");
   if (!seasonId) return null;
@@ -302,11 +336,7 @@ function mapBilibiliSearchItem(row) {
   var episodeCover = row.eps && row.eps[0] ? httpsUrl(row.eps[0].cover) : "";
   var score = row.media_score ? Number(row.media_score.score || 0) : 0;
   var mediaType = bilibiliMediaType(row);
-  var episodes = Array.isArray(row.eps)
-    ? row.eps.map(function (episode, index) {
-        return mapBilibiliEpisode(episode, index, mediaType, seasonId);
-      }).filter(function (episode) { return !!(episode && episode.link); })
-    : [];
+  var episodes = mapBilibiliSearchEpisodes(row, mediaType, seasonId);
   if (!episodes.length) {
     var pageEpisodeMatch = pageUrl.match(/\/bangumi\/play\/ep(\d+)/i);
     if (pageEpisodeMatch) {
@@ -367,17 +397,43 @@ async function search(params = {}) {
 
   var requestResults = await Promise.all(types.map(async function (searchType) {
     try {
-      var requestParams = {
+      var requestParams;
+      var searchApi;
+      var response;
+      if (wbiKeys) {
+        try {
+          requestParams = signBilibiliWbiParams({
+            search_type: searchType,
+            keyword: keyword,
+            page: page,
+          }, wbiKeys);
+          response = await Widget.http.get(BILIBILI_WBI_SEARCH_API, {
+            headers: bilibiliHeaders(lastBilibiliCookie, "https://search.bilibili.com/"),
+            params: requestParams,
+          });
+          var wbiBody = response && response.data;
+          if (!wbiBody || Number(wbiBody.code) !== 0) {
+            throw new Error(wbiBody && wbiBody.message ? wbiBody.message : "WBI 空响应");
+          }
+          var wbiRows = wbiBody.data && Array.isArray(wbiBody.data.result)
+            ? wbiBody.data.result
+            : [];
+          return { type: searchType, rows: wbiRows };
+        } catch (wbiSearchError) {
+          cachedBilibiliWbiKeys = null;
+          cachedBilibiliWbiKeysAt = 0;
+          console.warn("[B站搜索] WBI 请求失败，使用兼容接口:", searchType,
+            wbiSearchError.message || wbiSearchError);
+        }
+      }
+
+      requestParams = {
         search_type: searchType,
         keyword: keyword,
         page: page,
       };
-      var searchApi = BILIBILI_SEARCH_API;
-      if (wbiKeys) {
-        requestParams = signBilibiliWbiParams(requestParams, wbiKeys);
-        searchApi = BILIBILI_WBI_SEARCH_API;
-      }
-      var response = await Widget.http.get(searchApi, {
+      searchApi = BILIBILI_SEARCH_API;
+      response = await Widget.http.get(searchApi, {
         headers: bilibiliHeaders(lastBilibiliCookie, "https://search.bilibili.com/"),
         params: requestParams,
       });
