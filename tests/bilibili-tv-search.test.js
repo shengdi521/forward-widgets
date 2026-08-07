@@ -10,6 +10,7 @@ const calls = [];
 const stored = new Map();
 const TEST_COOKIE = "test-cookie-bilibili";
 let forceDashOnly = false;
+let forceWbiSearchFailure = false;
 
 const searchRow = {
   season_id: 28747,
@@ -69,6 +70,9 @@ const sandbox = {
           };
         }
         if (url.includes("/search/type")) {
+          if (forceWbiSearchFailure && url.includes("/wbi/")) {
+            return { data: { code: -352, message: "风控校验失败" } };
+          }
           const result = options.params.search_type === "media_ft" ? [movieRow] : [searchRow];
           return { data: { code: 0, message: "OK", data: { result } } };
         }
@@ -221,7 +225,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "forward.bilibili.tv.search");
   assert.equal(sandbox.WidgetMetadata.title, "B站影视搜索");
-  assert.equal(sandbox.WidgetMetadata.version, "1.4.2");
+  assert.equal(sandbox.WidgetMetadata.version, "1.4.3");
   assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.2");
   assert.equal(sandbox.WidgetMetadata.modules.length, 2);
   assert.equal(sandbox.WidgetMetadata.modules[0].id, "loadResource");
@@ -241,7 +245,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(sandbox.WidgetMetadata.search.functionName, "search");
   assert.deepEqual(
     Array.from(sandbox.WidgetMetadata.search.params, (param) => param.name),
-    ["keyword"],
+    ["keyword", "page"],
   );
   await assert.rejects(() => sandbox.search({ keyword: "  " }), /请输入要搜索的影视名称/);
   assert.equal(sandbox.bilibiliMd5("abc"), "900150983cd24fb0d6963f7d28e17f72");
@@ -391,8 +395,42 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(movieDetail.episodeItems[0].title, "正片");
   assert.equal(movieDetail.episodeItems[0].episode, undefined);
 
+  const largeSearchRow = {
+    ...searchRow,
+    hit_epids: "50",
+    eps: Array.from({ length: 100 }, (_, index) => ({
+      id: index + 1,
+      title: String(index + 1),
+      long_title: "第" + String(index + 1) + "话",
+      url: "https://www.bilibili.com/bangumi/play/ep" + String(index + 1),
+      cover: "https://i0.hdslb.com/episode-" + String(index + 1) + ".jpg",
+    })),
+  };
+  const compactSearchItem = sandbox.mapBilibiliSearchItem(largeSearchRow);
+  assert.equal(compactSearchItem.episodeItems.length, 3, "搜索结果不得携带完整超长分集列表");
+  assert.equal(compactSearchItem.episodeItems[0].link, "bilibili-play:28747:50::");
+  assert.equal(compactSearchItem.episodeItems[1].link, "bilibili-play:28747:1::");
+  assert.equal(compactSearchItem.episodeItems[2].link, "bilibili-play:28747:100::");
+
+  const fallbackSearchStart = calls.length;
+  forceWbiSearchFailure = true;
+  const fallbackSearchResults = await sandbox.search({
+    keyword: "霸王别姬",
+    page: 1,
+    contentType: "media_ft",
+    bilibiliCookie: TEST_COOKIE,
+  });
+  forceWbiSearchFailure = false;
+  const fallbackSearchCalls = calls.slice(fallbackSearchStart)
+    .filter((call) => call.url.includes("/search/type"));
+  assert.equal(fallbackSearchResults.length, 1, "WBI 风控失败时仍应返回兼容接口结果");
+  assert.equal(fallbackSearchCalls.length, 2);
+  assert.match(fallbackSearchCalls[0].url, /\/wbi\/search\/type/);
+  assert.doesNotMatch(fallbackSearchCalls[1].url, /\/wbi\//);
+  assert.equal(fallbackSearchCalls[1].options.params.w_rid, undefined);
+
   console.log("OK bilibili-tv-search", {
-    searchRequests: 4,
+    searchRequests: calls.filter((call) => call.url.includes("/search/type")).length,
     results: results.length,
     detailChecks: 2,
   });
