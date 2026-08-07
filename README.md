@@ -8,12 +8,12 @@ ForwardWidget 全影视在线搜索模块：
 ## 订阅地址
 
 ```text
-https://raw.githubusercontent.com/shengdi521/forward-widgets/main/forward-widgets.fwd?v=1.4.2
+https://raw.githubusercontent.com/shengdi521/forward-widgets/main/forward-widgets.fwd?v=1.4.3
 ```
 
 在手机或 iPad 的 Forward 中添加上述订阅地址，即可看到两个独立模块。
 
-搜索只通过 Forward 原生顶层搜索注册一个关键词输入框，避免普通模块参数页在 iPhone/iPad 键盘“完成”时丢失输入。搜索结果直接携带可播放正片或分集，不依赖客户端额外补全详情。电影、电视剧、动漫、综艺和纪录片仍会在同一搜索结果中返回。
+搜索只通过 Forward 原生顶层搜索注册关键词与分页参数，避免普通模块参数页在 iPhone/iPad 键盘“完成”时丢失输入。B站搜索在 WBI 风控失败时会自动回退兼容接口，并只在搜索页携带少量可直接播放分集，避免超长剧集列表导致客户端丢弃整页结果；详情页仍会加载完整分集。电影、电视剧、动漫、综艺和纪录片仍会在同一搜索结果中返回。
 
 ## Cookie 安全
 
