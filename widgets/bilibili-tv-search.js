@@ -1,9 +1,9 @@
 WidgetMetadata = {
   id: "forward.bilibili.tv.search",
   title: "B站影视搜索",
-  version: "1.4.3",
+  version: "1.4.4",
   requiredVersion: "0.0.2",
-  description: "使用可选的个人 Cookie 搜索并在线观看 B站官方影视；自动请求账号可达的最高清晰度，并加载可用的官方字幕。",
+  description: "使用可选的个人 Cookie 搜索并在线观看 B站官方影视；优先加载账号可达的 8K、杜比视界、HDR、4K 等 DASH 画质，并保留 MP4 兼容线路。",
   author: "Custom",
   site: "https://www.bilibili.com",
   detailCacheDuration: 0,
@@ -586,10 +586,15 @@ function bilibiliQualityLabel(result) {
   return fallback[quality] || (quality ? "清晰度 " + quality : "自动清晰度");
 }
 
-function bilibiliHighestAcceptedQuality(result) {
+function bilibiliHighestMixedRetryQuality(result, requestedQuality) {
+  var actualQuality = Number(result && result.quality || 0);
   var qualities = result && Array.isArray(result.accept_quality) ? result.accept_quality : [];
   return qualities.reduce(function (highest, quality) {
-    return Math.max(highest, Number(quality || 0));
+    var candidate = Number(quality || 0);
+    if (candidate <= actualQuality || candidate >= requestedQuality || candidate > 116) {
+      return highest;
+    }
+    return Math.max(highest, candidate);
   }, 0);
 }
 
@@ -602,6 +607,210 @@ function hasSingleBilibiliDurl(result) {
   return durls.length === 1 && !!durls[0].url;
 }
 
+function bilibiliXmlEscape(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function bilibiliUtf8Bytes(value) {
+  var bytes = [];
+  var text = String(value || "");
+  for (var index = 0; index < text.length; index += 1) {
+    var code = text.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff && index + 1 < text.length) {
+      var low = text.charCodeAt(index + 1);
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        code = 0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00);
+        index += 1;
+      }
+    }
+    if (code < 0x80) {
+      bytes.push(code);
+    } else if (code < 0x800) {
+      bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+    } else if (code < 0x10000) {
+      bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+    } else {
+      bytes.push(
+        0xf0 | (code >> 18),
+        0x80 | ((code >> 12) & 0x3f),
+        0x80 | ((code >> 6) & 0x3f),
+        0x80 | (code & 0x3f)
+      );
+    }
+  }
+  return bytes;
+}
+
+function bilibiliBase64(value) {
+  var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  var bytes = bilibiliUtf8Bytes(value);
+  var encoded = "";
+  for (var index = 0; index < bytes.length; index += 3) {
+    var first = bytes[index];
+    var second = index + 1 < bytes.length ? bytes[index + 1] : 0;
+    var third = index + 2 < bytes.length ? bytes[index + 2] : 0;
+    var block = (first << 16) | (second << 8) | third;
+    encoded += chars[(block >> 18) & 63];
+    encoded += chars[(block >> 12) & 63];
+    encoded += index + 1 < bytes.length ? chars[(block >> 6) & 63] : "=";
+    encoded += index + 2 < bytes.length ? chars[block & 63] : "=";
+  }
+  return encoded;
+}
+
+function bilibiliDashStreamUrl(stream) {
+  return httpsUrl(stream && (stream.base_url || stream.baseUrl || stream.url));
+}
+
+function bilibiliDashBackupUrls(stream) {
+  var backups = stream && (stream.backup_url || stream.backupUrl || []);
+  return Array.isArray(backups) ? backups.map(httpsUrl).filter(Boolean) : [];
+}
+
+function bilibiliDashSegmentBase(stream) {
+  var source = stream && (stream.SegmentBase || stream.segment_base) || {};
+  return {
+    indexRange: String(source.indexRange || source.index_range || ""),
+    initialization: String(source.Initialization || source.initialization || ""),
+  };
+}
+
+function bilibiliDashRepresentationXml(stream, kind, index) {
+  var baseUrl = bilibiliDashStreamUrl(stream);
+  if (!baseUrl) return "";
+  var mimeType = String(stream.mimeType || stream.mime_type || (kind === "video" ? "video/mp4" : "audio/mp4"));
+  var codecs = String(stream.codecs || "");
+  var bandwidth = Number(stream.bandwidth || 0);
+  var id = kind + "-" + String(stream.id || index) + "-" + String(stream.codecid || index);
+  var attributes = [
+    "id=\"" + bilibiliXmlEscape(id) + "\"",
+    "mimeType=\"" + bilibiliXmlEscape(mimeType) + "\"",
+    "codecs=\"" + bilibiliXmlEscape(codecs) + "\"",
+    "bandwidth=\"" + String(bandwidth) + "\"",
+    "startWithSAP=\"" + String(stream.startWithSap || stream.start_with_sap || 1) + "\"",
+  ];
+  if (kind === "video") {
+    if (stream.width) attributes.push("width=\"" + String(stream.width) + "\"");
+    if (stream.height) attributes.push("height=\"" + String(stream.height) + "\"");
+    if (stream.frameRate || stream.frame_rate) {
+      attributes.push("frameRate=\"" + bilibiliXmlEscape(stream.frameRate || stream.frame_rate) + "\"");
+    }
+    if (stream.sar) attributes.push("sar=\"" + bilibiliXmlEscape(stream.sar) + "\"");
+  } else if (stream.audioSamplingRate || stream.audio_sampling_rate) {
+    attributes.push("audioSamplingRate=\"" + String(stream.audioSamplingRate || stream.audio_sampling_rate) + "\"");
+  }
+
+  var urls = [baseUrl].concat(bilibiliDashBackupUrls(stream).slice(0, 1));
+  var baseUrls = urls.map(function (url) {
+    return "<BaseURL>" + bilibiliXmlEscape(url) + "</BaseURL>";
+  }).join("");
+  var segment = bilibiliDashSegmentBase(stream);
+  var segmentXml = "";
+  if (segment.indexRange || segment.initialization) {
+    segmentXml = "<SegmentBase indexRange=\"" + bilibiliXmlEscape(segment.indexRange) + "\">";
+    if (segment.initialization) {
+      segmentXml += "<Initialization range=\"" + bilibiliXmlEscape(segment.initialization) + "\"/>";
+    }
+    segmentXml += "</SegmentBase>";
+  }
+  return "<Representation " + attributes.join(" ") + ">" + baseUrls + segmentXml + "</Representation>";
+}
+
+function bilibiliDashAudioStreams(dash) {
+  var streams = Array.isArray(dash && dash.audio) ? dash.audio.slice() : [];
+  var dolbyAudio = dash && dash.dolby && dash.dolby.audio;
+  var flacAudio = dash && dash.flac && dash.flac.audio;
+  if (Array.isArray(dolbyAudio)) streams = streams.concat(dolbyAudio);
+  else if (dolbyAudio) streams.push(dolbyAudio);
+  if (Array.isArray(flacAudio)) streams = streams.concat(flacAudio);
+  else if (flacAudio) streams.push(flacAudio);
+
+  var seen = {};
+  return streams.filter(function (stream) {
+    var url = bilibiliDashStreamUrl(stream);
+    if (!url || seen[url]) return false;
+    seen[url] = true;
+    return true;
+  }).sort(function (left, right) {
+    return Number(right.bandwidth || 0) - Number(left.bandwidth || 0);
+  });
+}
+
+function bilibiliDashQualityOrder(quality) {
+  var order = [127, 126, 125, 120, 116, 112, 100, 80, 74, 64, 32, 16, 6];
+  var index = order.indexOf(Number(quality || 0));
+  return index >= 0 ? index : order.length;
+}
+
+function bilibiliDashQualityLabel(result, quality) {
+  var formats = result && Array.isArray(result.support_formats) ? result.support_formats : [];
+  for (var index = 0; index < formats.length; index += 1) {
+    if (Number(formats[index].quality) !== Number(quality)) continue;
+    var label = formats[index].new_description || formats[index].display_desc || formats[index].description;
+    if (label) return cleanText(label);
+  }
+  return bilibiliQualityLabel({ quality: quality });
+}
+
+function buildBilibiliDashManifest(videoStreams, audioStreams, duration) {
+  var seconds = Number(duration || 0);
+  var presentationDuration = seconds > 0 ? "PT" + seconds.toFixed(3) + "S" : "PT0S";
+  var videoXml = videoStreams.map(function (stream, index) {
+    return bilibiliDashRepresentationXml(stream, "video", index);
+  }).join("");
+  var audioXml = audioStreams.map(function (stream, index) {
+    return bilibiliDashRepresentationXml(stream, "audio", index);
+  }).join("");
+  if (!videoXml || !audioXml) return "";
+  return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+    "<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\" type=\"static\" " +
+    "profiles=\"urn:mpeg:dash:profile:isoff-on-demand:2011\" " +
+    "mediaPresentationDuration=\"" + presentationDuration + "\" minBufferTime=\"PT1.500S\">" +
+    "<Period id=\"0\" duration=\"" + presentationDuration + "\">" +
+    "<AdaptationSet id=\"1\" contentType=\"video\" segmentAlignment=\"true\" startWithSAP=\"1\">" +
+    videoXml + "</AdaptationSet>" +
+    "<AdaptationSet id=\"2\" contentType=\"audio\" segmentAlignment=\"true\" startWithSAP=\"1\">" +
+    audioXml + "</AdaptationSet></Period></MPD>";
+}
+
+function buildBilibiliDashResources(result, epId) {
+  var dash = result && result.dash;
+  var videos = dash && Array.isArray(dash.video) ? dash.video : [];
+  var audios = bilibiliDashAudioStreams(dash);
+  if (!videos.length || !audios.length) return [];
+
+  var qualityGroups = {};
+  videos.forEach(function (stream) {
+    var quality = String(Number(stream.id || 0));
+    if (!qualityGroups[quality]) qualityGroups[quality] = [];
+    qualityGroups[quality].push(stream);
+  });
+  var qualities = Object.keys(qualityGroups).map(Number).filter(Boolean).sort(function (left, right) {
+    var orderDiff = bilibiliDashQualityOrder(left) - bilibiliDashQualityOrder(right);
+    return orderDiff || right - left;
+  });
+  var headers = bilibiliPlaybackHeaders(epId);
+  headers["X-Forward-Skip-Redirect-Probe"] = "1";
+
+  return qualities.map(function (quality, index) {
+    var manifest = buildBilibiliDashManifest(qualityGroups[String(quality)], audios, dash.duration);
+    if (!manifest) return null;
+    return {
+      name: "B站 " + bilibiliDashQualityLabel(result, quality) +
+        (index === 0 ? " · 账号可达最高" : " · DASH 双轨"),
+      description: "B站官方 DASH · 视频+音频 · 自适应兼容编码",
+      url: "data:application/dash+xml;base64," + bilibiliBase64(manifest),
+      customHeaders: headers,
+      playerType: "app",
+    };
+  }).filter(Boolean);
+}
+
 function bilibiliPlaybackHeaders(epId) {
   return {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/136 Safari/537.36",
@@ -609,7 +818,7 @@ function bilibiliPlaybackHeaders(epId) {
   };
 }
 
-async function requestBilibiliPlayResult(playRoute, quality, fnval, format) {
+async function requestBilibiliDashResult(playRoute) {
   var response = await Widget.http.get(BILIBILI_PLAY_API, {
     headers: bilibiliHeaders(
       lastBilibiliCookie,
@@ -619,13 +828,44 @@ async function requestBilibiliPlayResult(playRoute, quality, fnval, format) {
       avid: playRoute.aid,
       cid: playRoute.cid,
       ep_id: playRoute.epId,
-      qn: quality,
-      type: format,
+      qn: 127,
+      type: "",
       otype: "json",
       fnver: 0,
-      fnval: fnval,
+      fnval: 4048,
       fourk: 1,
     },
+  });
+  var body = response && response.data;
+  var result = body && body.result;
+  if (!body || Number(body.code) !== 0 || !result ||
+      (result.code !== undefined && Number(result.code) !== 0)) {
+    throw new Error((result && result.message) || (body && body.message) || "平台未返回 DASH 播放地址");
+  }
+  return result;
+}
+
+async function requestBilibiliPlayResult(playRoute, quality, useHtml5) {
+  var requestParams = {
+    avid: playRoute.aid,
+    cid: playRoute.cid,
+    ep_id: playRoute.epId,
+    qn: quality,
+    type: "",
+    otype: "json",
+    fnver: 0,
+    fnval: 1,
+    fourk: 0,
+    high_quality: 1,
+  };
+  if (useHtml5) requestParams.platform = "html5";
+
+  var response = await Widget.http.get(BILIBILI_PLAY_API, {
+    headers: bilibiliHeaders(
+      lastBilibiliCookie,
+      "https://www.bilibili.com/bangumi/play/ep" + playRoute.epId
+    ),
+    params: requestParams,
   });
   var body = response && response.data;
   var result = body && body.result;
@@ -637,44 +877,40 @@ async function requestBilibiliPlayResult(playRoute, quality, fnval, format) {
 }
 
 async function loadBestBilibiliMixedStream(playRoute) {
-  var highestFlv = null;
+  var html5Mixed = null;
   try {
-    highestFlv = await requestBilibiliPlayResult(playRoute, 127, 4049, "flv");
-    var advertisedQuality = bilibiliHighestAcceptedQuality(highestFlv);
-    var actualQuality = Number(highestFlv.quality || 0);
-    if (advertisedQuality > actualQuality && advertisedQuality <= 127) {
+    html5Mixed = await requestBilibiliPlayResult(playRoute, 116, true);
+    var actualQuality = Number(html5Mixed.quality || 0);
+    var retryQuality = bilibiliHighestMixedRetryQuality(html5Mixed, 116);
+    if (retryQuality > actualQuality) {
       try {
-        var exactFlv = await requestBilibiliPlayResult(
-          playRoute,
-          advertisedQuality,
-          4049,
-          "flv"
-        );
-        if (hasSingleBilibiliDurl(exactFlv) &&
-            Number(exactFlv.quality || 0) > actualQuality) {
-          highestFlv = exactFlv;
+        var exactHtml5 = await requestBilibiliPlayResult(playRoute, retryQuality, true);
+        if (hasSingleBilibiliDurl(exactHtml5) &&
+            Number(exactHtml5.quality || 0) > actualQuality) {
+          html5Mixed = exactHtml5;
         }
       } catch (retryError) {
         console.warn("[B站播放] 精确画质重试失败:", retryError.message || retryError);
       }
     }
-    if (hasSingleBilibiliDurl(highestFlv)) return highestFlv;
-  } catch (flvError) {
-    console.warn("[B站播放] 高清混流请求失败，改用 MP4 兼容线路:", flvError.message || flvError);
+    if (hasSingleBilibiliDurl(html5Mixed)) return html5Mixed;
+  } catch (html5Error) {
+    console.warn("[B站播放] HTML5 高画质请求失败，改用 MP4 兼容线路:",
+      html5Error.message || html5Error);
   }
 
-  var fallback = await requestBilibiliPlayResult(playRoute, 127, 1, "mp4");
+  var fallback = await requestBilibiliPlayResult(playRoute, 80, false);
   if (hasSingleBilibiliDurl(fallback)) return fallback;
 
   var fallbackDurls = Array.isArray(fallback.durl) ? fallback.durl : [];
   if (fallbackDurls.length > 1 ||
-      (highestFlv && Array.isArray(highestFlv.durl) && highestFlv.durl.length > 1)) {
+      (html5Mixed && Array.isArray(html5Mixed.durl) && html5Mixed.durl.length > 1)) {
     throw new Error("该视频仅返回多段混流，当前 Forward 播放器暂不支持连续拼接");
   }
-  if (fallback.dash || (highestFlv && highestFlv.dash)) {
+  if (fallback.dash || (html5Mixed && html5Mixed.dash)) {
     throw new Error("该视频仅返回分离音视频流，当前 Forward 资源模型无法直接合并");
   }
-  throw new Error("账号当前没有可播放的官方混流线路，请检查会员权限或地区限制");
+  throw new Error("账号当前没有可直接播放的官方 MP4 线路，请检查会员权限或地区限制");
 }
 
 function bilibiliPlayRouteCacheKey(playRoute) {
@@ -830,25 +1066,47 @@ async function loadResource(params = {}) {
     var epId = playRoute.epId;
     var aid = playRoute.aid;
     var cid = playRoute.cid;
-    var result = await loadBestBilibiliMixedStream({ epId: epId, aid: aid, cid: cid });
-    var durls = result.durl;
+    var resolvedRoute = { epId: epId, aid: aid, cid: cid };
+    var dashResources = [];
+    var dashError = null;
+    try {
+      var dashResult = await requestBilibiliDashResult(resolvedRoute);
+      dashResources = buildBilibiliDashResources(dashResult, epId);
+    } catch (error) {
+      dashError = error;
+      console.warn("[B站播放] DASH 高画质请求失败，继续加载 MP4:", error.message || error);
+    }
 
-    var urls = [durls[0].url].concat(Array.isArray(durls[0].backup_url) ? durls[0].backup_url : []);
-    var seen = {};
-    var quality = bilibiliQualityLabel(result);
-    var streamFormat = bilibiliMixedStreamFormat(result);
-    return urls.map(function (url, index) {
-      var playbackUrl = httpsUrl(url);
-      if (!playbackUrl || seen[playbackUrl]) return null;
-      seen[playbackUrl] = true;
-      return {
-        name: "B站 " + quality + (index === 0 ? " · 账号当前最高" : " · 同画质备用线路 " + index),
-        description: "B站官方混流 " + streamFormat + " · 自动请求账号可达最高画质 · 默认音轨",
-        url: playbackUrl,
-        customHeaders: bilibiliPlaybackHeaders(epId),
-        playerType: "app",
-      };
-    }).filter(function (item) { return !!item; });
+    var mixedResources = [];
+    var mixedError = null;
+    try {
+      var result = await loadBestBilibiliMixedStream(resolvedRoute);
+      var durls = result.durl;
+      var urls = [durls[0].url].concat(Array.isArray(durls[0].backup_url) ? durls[0].backup_url : []);
+      var seen = {};
+      var quality = bilibiliQualityLabel(result);
+      var streamFormat = bilibiliMixedStreamFormat(result);
+      mixedResources = urls.map(function (url, index) {
+        var playbackUrl = httpsUrl(url);
+        if (!playbackUrl || seen[playbackUrl]) return null;
+        seen[playbackUrl] = true;
+        return {
+          name: "B站 " + quality + (index === 0 ? " · 最高单路画质" : " · 同画质备用线路 " + index),
+          description: "B站官方单路 " + streamFormat + " · HTML5 高画质优先 · 默认音轨",
+          url: playbackUrl,
+          customHeaders: bilibiliPlaybackHeaders(epId),
+          playerType: "app",
+        };
+      }).filter(function (item) { return !!item; });
+    } catch (error) {
+      mixedError = error;
+      console.warn("[B站播放] MP4 兼容线路请求失败:", error.message || error);
+    }
+
+    if (dashResources.length || mixedResources.length) {
+      return dashResources.concat(mixedResources);
+    }
+    throw mixedError || dashError || new Error("平台未返回可播放线路");
   } catch (error) {
     console.error("[B站播放] 加载失败:", error.message || error);
     throw new Error("B站播放资源加载失败：" + (error.message || error));
