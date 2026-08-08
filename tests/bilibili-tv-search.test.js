@@ -137,7 +137,64 @@ const sandbox = {
         }
         if (url.includes("/pgc/player/web/playurl")) {
           const playParams = options.params || {};
-          if (forceDashOnly && Number(playParams.fnval) === 4049) {
+          if (Number(playParams.fnval) === 4048) {
+            return {
+              data: {
+                code: 0,
+                message: "success",
+                result: {
+                  code: 0,
+                  quality: 125,
+                  support_formats: [
+                    { quality: 125, new_description: "HDR 真彩色" },
+                    { quality: 120, new_description: "超清 4K" },
+                  ],
+                  dash: {
+                    duration: 1440.5,
+                    video: [
+                      {
+                        id: 125,
+                        base_url: "http://upos-sz-mirrorcos.bilivideo.com/hdr.m4s?token=video&deadline=1",
+                        backup_url: ["https://upos-sz-mirrorali.bilivideo.com/hdr.m4s?token=backup"],
+                        mimeType: "video/mp4",
+                        codecs: "hev1.2.4.L153.B0",
+                        width: 3840,
+                        height: 2160,
+                        frameRate: "60",
+                        bandwidth: 18000000,
+                        codecid: 12,
+                        SegmentBase: { Initialization: "0-999", indexRange: "1000-1999" },
+                      },
+                      {
+                        id: 120,
+                        baseUrl: "https://upos-sz-mirrorcos.bilivideo.com/4k.m4s?token=video4k",
+                        mime_type: "video/mp4",
+                        codecs: "avc1.640033",
+                        width: 3840,
+                        height: 2160,
+                        frame_rate: "30",
+                        bandwidth: 12000000,
+                        codecid: 7,
+                        segment_base: { initialization: "0-799", index_range: "800-1599" },
+                      },
+                    ],
+                    audio: [
+                      {
+                        id: 30280,
+                        base_url: "https://upos-sz-mirrorcos.bilivideo.com/audio.m4s?token=audio&deadline=1",
+                        mimeType: "audio/mp4",
+                        codecs: "mp4a.40.2",
+                        bandwidth: 192000,
+                        audioSamplingRate: 48000,
+                        SegmentBase: { Initialization: "0-599", indexRange: "600-1199" },
+                      },
+                    ],
+                  },
+                },
+              },
+            };
+          }
+          if (forceDashOnly && playParams.platform === "html5") {
             return {
               data: {
                 code: 0,
@@ -152,25 +209,22 @@ const sandbox = {
               },
             };
           }
-          const isExactHighFlv = Number(playParams.fnval) === 4049 && Number(playParams.qn) === 112;
+          const isExactHighMp4 = Number(playParams.fnval) === 1 &&
+            playParams.platform === "html5" && Number(playParams.qn) === 112;
           return {
             data: {
               code: 0,
               message: "success",
               result: {
                 code: 0,
-                quality: isExactHighFlv ? 112 : 64,
-                format: isExactHighFlv ? "hdflv2" : "mp4",
+                quality: isExactHighMp4 ? 112 : 64,
+                format: "mp4",
                 accept_quality: [112, 80, 64, 32, 16],
                 accept_description: ["1080P 高码率", "1080P", "720P", "480P", "360P"],
                 durl: [
                   {
-                    url: isExactHighFlv
-                      ? "http://upos-sz-mirrorcos.bilivideo.com/video.flv?token=primary"
-                      : "http://upos-sz-mirrorcos.bilivideo.com/video.mp4?token=primary",
-                    backup_url: [isExactHighFlv
-                      ? "https://upos-sz-mirrorali.bilivideo.com/video.flv?token=backup"
-                      : "https://upos-sz-mirrorali.bilivideo.com/video.mp4?token=backup"],
+                    url: "http://upos-sz-mirrorcos.bilivideo.com/video.mp4?token=primary",
+                    backup_url: ["https://upos-sz-mirrorali.bilivideo.com/video.mp4?token=backup"],
                   },
                 ],
               },
@@ -225,7 +279,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "forward.bilibili.tv.search");
   assert.equal(sandbox.WidgetMetadata.title, "B站影视搜索");
-  assert.equal(sandbox.WidgetMetadata.version, "1.4.3");
+  assert.equal(sandbox.WidgetMetadata.version, "1.4.4");
   assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.2");
   assert.equal(sandbox.WidgetMetadata.modules.length, 2);
   assert.equal(sandbox.WidgetMetadata.modules[0].id, "loadResource");
@@ -290,8 +344,8 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
     link: results[0].episodeItems[0].link,
     bilibiliCookie: TEST_COOKIE,
   });
-  assert.equal(directResources.length, 2, "搜索结果中的命中分集应能直接起播");
-  assert.match(directResources[0].name, /账号当前最高/);
+  assert.equal(directResources.length, 4, "搜索结果中的命中分集应返回 DASH 与 MP4 线路");
+  assert.match(directResources[0].name, /HDR 真彩色.*账号可达最高/);
 
   const detail = await sandbox.loadDetail(results[0].link);
   const detailCall = calls.find((call) => call.url.includes("/pgc/view/web/season"));
@@ -309,28 +363,53 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
     link: detail.episodeItems[0].link,
     bilibiliCookie: TEST_COOKIE,
   });
-  const playCall = calls.find((call) => call.url.includes("/pgc/player/web/playurl"));
+  const dashCall = calls.find((call) =>
+    call.url.includes("/pgc/player/web/playurl") && Number(call.options.params.fnval) === 4048
+  );
+  assert.equal(dashCall.options.params.qn, 127);
+  assert.equal(dashCall.options.params.fourk, 1);
+  assert.equal(dashCall.options.headers.Cookie, TEST_COOKIE);
+  const playCall = calls.find((call) =>
+    call.url.includes("/pgc/player/web/playurl") && call.options.params.platform === "html5"
+  );
   assert.equal(playCall.options.params.avid, "478818261");
   assert.equal(playCall.options.params.cid, "1022370693");
   assert.equal(playCall.options.params.ep_id, "733316");
-  assert.equal(playCall.options.params.qn, 127);
-  assert.equal(playCall.options.params.fnval, 4049);
-  assert.equal(playCall.options.params.type, "flv");
+  assert.equal(playCall.options.params.qn, 116);
+  assert.equal(playCall.options.params.fnval, 1);
+  assert.equal(playCall.options.params.type, "");
   assert.equal(playCall.options.params.otype, "json");
+  assert.equal(playCall.options.params.platform, "html5");
+  assert.equal(playCall.options.params.fourk, 0);
+  assert.equal(playCall.options.params.high_quality, 1);
   assert.equal(playCall.options.headers.Cookie, TEST_COOKIE);
   const exactQualityCall = calls.find((call) =>
     call.url.includes("/pgc/player/web/playurl") &&
-    Number(call.options.params.fnval) === 4049 &&
+    Number(call.options.params.fnval) === 1 &&
+    call.options.params.platform === "html5" &&
     Number(call.options.params.qn) === 112
   );
   assert.ok(exactQualityCall, "接口公布更高档位时应按最高档精确重试");
-  assert.equal(resources.length, 2);
-  assert.match(resources[0].name, /1080P 高码率/);
-  assert.match(resources[0].description, /混流 FLV/);
-  assert.match(resources[0].url, /^https:\/\//);
+  assert.equal(resources.length, 4);
+  assert.match(resources[0].name, /HDR 真彩色.*账号可达最高/);
+  assert.match(resources[1].name, /超清 4K.*DASH 双轨/);
+  assert.match(resources[0].description, /官方 DASH.*视频\+音频/);
+  assert.match(resources[0].url, /^data:application\/dash\+xml;base64,/);
   assert.equal(resources[0].playerType, "app");
   assert.equal(resources[0].customHeaders.Cookie, undefined, "Cookie 不得发送给视频 CDN");
-  assert.match(resources[0].name, /账号当前最高/);
+  assert.equal(resources[0].customHeaders["X-Forward-Skip-Redirect-Probe"], "1");
+  const manifestXml = Buffer.from(resources[0].url.split(",")[1], "base64").toString("utf8");
+  assert.ok(!manifestXml.includes(TEST_COOKIE), "DASH MPD 不得包含账号 Cookie");
+  assert.match(manifestXml, /<AdaptationSet id="1" contentType="video"/);
+  assert.match(manifestXml, /<AdaptationSet id="2" contentType="audio"/);
+  assert.match(manifestXml, /id="video-125-12"/);
+  assert.match(manifestXml, /token=video&amp;deadline=1/);
+  assert.match(manifestXml, /<SegmentBase indexRange="1000-1999">/);
+  assert.match(manifestXml, /<Initialization range="0-999"\/>/);
+  const mp4Resource = resources.find((resource) => /^https:\/\//.test(resource.url));
+  assert.ok(mp4Resource, "应保留单路 MP4 兼容资源");
+  assert.match(mp4Resource.name, /1080P 高码率.*最高单路画质/);
+  assert.match(mp4Resource.description, /单路 MP4/);
 
   const fallbackCallStart = calls.length;
   forceDashOnly = true;
@@ -340,14 +419,20 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   });
   forceDashOnly = false;
   const fallbackPlayCalls = calls.slice(fallbackCallStart)
-    .filter((call) => call.url.includes("/pgc/player/web/playurl"));
+    .filter((call) => call.url.includes("/pgc/player/web/playurl") && Number(call.options.params.fnval) === 1);
   assert.deepEqual(
-    fallbackPlayCalls.map((call) => Number(call.options.params.fnval)),
-    [4049, 1],
-    "仅返回 DASH 时应回退到单路 MP4",
+    fallbackPlayCalls.map((call) => [
+      Number(call.options.params.qn),
+      Number(call.options.params.fnval),
+      call.options.params.platform,
+    ]),
+    [[116, 1, "html5"], [80, 1, undefined]],
+    "HTML5 模式未返回单路时应回退到普通 MP4",
   );
-  assert.match(fallbackResources[0].name, /720P/);
-  assert.match(fallbackResources[0].description, /混流 MP4/);
+  const fallbackMp4 = fallbackResources.find((resource) => /^https:\/\//.test(resource.url));
+  assert.ok(fallbackMp4, "DASH 线路之外应保留普通 MP4 回退");
+  assert.match(fallbackMp4.name, /720P/);
+  assert.match(fallbackMp4.description, /单路 MP4/);
 
   const subtitles = await sandbox.loadSubtitle({
     link: detail.episodeItems[0].link,

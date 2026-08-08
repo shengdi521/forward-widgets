@@ -45,6 +45,25 @@ function createSandbox(filename) {
 
 async function probeResource(resource) {
   const headers = { ...(resource.customHeaders || resource.headers || {}) };
+  delete headers["X-Forward-Skip-Redirect-Probe"];
+  if (/^data:application\/dash\+xml;base64,/i.test(resource.url)) {
+    const manifest = Buffer.from(resource.url.split(",")[1], "base64").toString("utf8");
+    if (!/<MPD\b/.test(manifest) || !/contentType="video"/.test(manifest) || !/contentType="audio"/.test(manifest)) {
+      return { status: 0, contentType: "application/dash+xml", valid: false };
+    }
+    const baseUrlMatch = manifest.match(/<BaseURL>([^<]+)<\/BaseURL>/);
+    if (!baseUrlMatch) return { status: 0, contentType: "application/dash+xml", valid: false };
+    const mediaUrl = baseUrlMatch[1]
+      .replace(/&amp;/g, "&")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">");
+    const response = await fetch(mediaUrl, { headers: { ...headers, Range: "bytes=0-1" } });
+    const contentType = response.headers.get("content-type") || "";
+    if (response.body) await response.body.cancel();
+    return { status: response.status, contentType: `application/dash+xml -> ${contentType}`, valid: response.ok || response.status === 206 };
+  }
   const isHls = /\.m3u8(?:\?|$)/i.test(resource.url);
   if (!isHls) headers.Range = "bytes=0-1";
   const response = await fetch(resource.url, { headers });
@@ -75,9 +94,9 @@ function firstPlayableEpisode(primary, fallback) {
     .find((item) => /^(?:bilibili|iqiyi)-play:/.test(String(item.link || "")));
 }
 
-async function runCases(platform, sandbox, cases, cookieName, cookieValue) {
+async function runCases(platform, sandbox, cases, cookieName, cookieValue, expectedSearchParams, topLinePattern) {
   const searchParamNames = Array.from(sandbox.WidgetMetadata.search.params, (param) => param.name);
-  if (JSON.stringify(searchParamNames) !== JSON.stringify(["keyword"])) {
+  if (JSON.stringify(searchParamNames) !== JSON.stringify(expectedSearchParams)) {
     throw new Error(`${platform} 全局搜索参数会触发客户端表单重建`);
   }
   if (sandbox.WidgetMetadata.modules.some((module) => module.functionName === sandbox.WidgetMetadata.search.functionName)) {
@@ -98,8 +117,8 @@ async function runCases(platform, sandbox, cases, cookieName, cookieValue) {
     if (!episode) throw new Error(`${platform} ${item.title} 搜索结果不能直接进入播放`);
     const resources = await sandbox.loadResource({ link: episode.link, [cookieName]: cookieValue || "" });
     if (!resources.length) throw new Error(`${platform} ${item.title} 没有播放线路`);
-    if (!/账号当前最高/.test(String(resources[0].name || ""))) {
-      throw new Error(`${platform} ${item.title} 第一条线路不是账号当前最高画质`);
+    if (!topLinePattern.test(String(resources[0].name || ""))) {
+      throw new Error(`${platform} ${item.title} 第一条线路不是预期的最高画质`);
     }
     const probe = await probeResource(resources[0]);
     if (!probe.valid) throw new Error(`${platform} ${item.title} 播放线路探测失败：HTTP ${probe.status}`);
@@ -151,10 +170,28 @@ async function runCases(platform, sandbox, cases, cookieName, cookieValue) {
     { contentType: "documentary", keyword: "航拍中国" },
   ];
 
-  const rows = [
-    ...(await runCases("B站", bilibili, bilibiliCases, "bilibiliCookie", process.env.BILIBILI_COOKIE)),
-    ...(await runCases("爱奇艺", iqiyi, iqiyiCases, "iqiyiCookie", process.env.IQIYI_COOKIE)),
-  ];
+  const platformFilter = String(process.env.LIVE_PLATFORM || "").toLowerCase();
+  const caseLimit = Math.max(1, Number(process.env.LIVE_CASE_LIMIT || 5));
+  const caseOffset = Math.max(0, Number(process.env.LIVE_CASE_OFFSET || 0));
+  const rows = [];
+  if (!platformFilter || platformFilter === "bilibili") rows.push(...(await runCases(
+      "B站",
+      bilibili,
+      bilibiliCases.slice(caseOffset, caseOffset + caseLimit),
+      "bilibiliCookie",
+      process.env.BILIBILI_COOKIE,
+      ["keyword", "page"],
+      /账号可达最高/,
+    )));
+  if (!platformFilter || platformFilter === "iqiyi") rows.push(...(await runCases(
+      "爱奇艺",
+      iqiyi,
+      iqiyiCases.slice(caseOffset, caseOffset + caseLimit),
+      "iqiyiCookie",
+      process.env.IQIYI_COOKIE,
+      ["keyword"],
+      /账号当前最高/,
+    )));
   console.table(rows);
   console.log("OK live-smoke", { cases: rows.length, cookies: "optional runtime environment only" });
 })().catch((error) => {
