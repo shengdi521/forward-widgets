@@ -1,7 +1,7 @@
 WidgetMetadata = {
   id: "forward.iqiyi.tv.search",
   title: "爱奇艺影视搜索",
-  version: "1.4.1",
+  version: "1.4.2",
   requiredVersion: "0.0.2",
   description: "使用可选的个人 Cookie 搜索并在线观看爱奇艺官方影视；自动优先账号可达的最高清晰度，并支持可用音轨和字幕切换。",
   author: "Custom",
@@ -38,6 +38,7 @@ WidgetMetadata = {
     functionName: "search",
     params: [
       { name: "keyword", title: "影视名称", type: "input" },
+      { name: "page", title: "页码", type: "page" },
     ],
   },
 };
