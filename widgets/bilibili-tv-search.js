@@ -1,7 +1,7 @@
 WidgetMetadata = {
   id: "forward.bilibili.tv.search",
   title: "B站影视搜索",
-  version: "1.4.4",
+  version: "1.4.5",
   requiredVersion: "0.0.2",
   description: "使用可选的个人 Cookie 搜索并在线观看 B站官方影视；优先加载账号可达的 8K、杜比视界、HDR、4K 等 DASH 画质，并保留 MP4 兼容线路。",
   author: "Custom",
@@ -604,7 +604,7 @@ function bilibiliMixedStreamFormat(result) {
 
 function hasSingleBilibiliDurl(result) {
   var durls = result && Array.isArray(result.durl) ? result.durl : [];
-  return durls.length === 1 && !!durls[0].url;
+  return durls.length >= 1 && !!durls[0].url;
 }
 
 function bilibiliXmlEscape(value) {
@@ -902,11 +902,6 @@ async function loadBestBilibiliMixedStream(playRoute) {
   var fallback = await requestBilibiliPlayResult(playRoute, 80, false);
   if (hasSingleBilibiliDurl(fallback)) return fallback;
 
-  var fallbackDurls = Array.isArray(fallback.durl) ? fallback.durl : [];
-  if (fallbackDurls.length > 1 ||
-      (html5Mixed && Array.isArray(html5Mixed.durl) && html5Mixed.durl.length > 1)) {
-    throw new Error("该视频仅返回多段混流，当前 Forward 播放器暂不支持连续拼接");
-  }
   if (fallback.dash || (html5Mixed && html5Mixed.dash)) {
     throw new Error("该视频仅返回分离音视频流，当前 Forward 资源模型无法直接合并");
   }
@@ -1082,22 +1077,28 @@ async function loadResource(params = {}) {
     try {
       var result = await loadBestBilibiliMixedStream(resolvedRoute);
       var durls = result.durl;
-      var urls = [durls[0].url].concat(Array.isArray(durls[0].backup_url) ? durls[0].backup_url : []);
       var seen = {};
       var quality = bilibiliQualityLabel(result);
       var streamFormat = bilibiliMixedStreamFormat(result);
-      mixedResources = urls.map(function (url, index) {
-        var playbackUrl = httpsUrl(url);
-        if (!playbackUrl || seen[playbackUrl]) return null;
-        seen[playbackUrl] = true;
-        return {
-          name: "B站 " + quality + (index === 0 ? " · 最高单路画质" : " · 同画质备用线路 " + index),
-          description: "B站官方单路 " + streamFormat + " · HTML5 高画质优先 · 默认音轨",
-          url: playbackUrl,
-          customHeaders: bilibiliPlaybackHeaders(epId),
-          playerType: "app",
-        };
-      }).filter(function (item) { return !!item; });
+      var totalSegments = durls.length;
+      mixedResources = durls.reduce(function (acc, durl, segIndex) {
+        var segUrls = [durl.url].concat(Array.isArray(durl.backup_url) ? durl.backup_url : []);
+        var segLabel = totalSegments > 1 ? (" · 分片 " + (segIndex + 1) + "/" + totalSegments) : "";
+        segUrls.forEach(function (url, urlIndex) {
+          var playbackUrl = httpsUrl(url);
+          if (!playbackUrl || seen[playbackUrl]) return;
+          seen[playbackUrl] = true;
+          var isMainUrl = urlIndex === 0;
+          acc.push({
+            name: "B站 " + quality + segLabel + (isMainUrl ? " · 账号当前最高" : " · 备用线路 " + urlIndex),
+            description: "B站官方" + (totalSegments > 1 ? "分段 " : "单路 ") + streamFormat + " · HTML5 高画质优先 · 默认音轨",
+            url: playbackUrl,
+            customHeaders: bilibiliPlaybackHeaders(epId),
+            playerType: "app",
+          });
+        });
+        return acc;
+      }, []);
     } catch (error) {
       mixedError = error;
       console.warn("[B站播放] MP4 兼容线路请求失败:", error.message || error);
