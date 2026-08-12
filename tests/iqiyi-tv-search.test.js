@@ -201,8 +201,8 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "forward.iqiyi.tv.search");
   assert.equal(sandbox.WidgetMetadata.title, "爱奇艺影视搜索");
-  assert.equal(sandbox.WidgetMetadata.version, "1.4.4");
-  assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.2");
+  assert.equal(sandbox.WidgetMetadata.version, "1.4.5");
+  assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.1");
   assert.equal(sandbox.WidgetMetadata.modules.length, 2);
   assert.equal(sandbox.WidgetMetadata.modules[0].id, "loadResource");
   assert.equal(sandbox.WidgetMetadata.modules[0].functionName, "loadResource");
