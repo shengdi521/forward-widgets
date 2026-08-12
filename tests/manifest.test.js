@@ -9,8 +9,8 @@ const root = path.resolve(__dirname, "..");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "forward-widgets.fwd"), "utf8"));
 
 assert.equal(manifest.widgets.length, 2);
-assert.equal(manifest.widgets.find((entry) => entry.id === "forward.bilibili.tv.search").version, "1.4.6");
-assert.equal(manifest.widgets.find((entry) => entry.id === "forward.iqiyi.tv.search").version, "1.4.3");
+assert.equal(manifest.widgets.find((entry) => entry.id === "forward.bilibili.tv.search").version, "1.4.7");
+assert.equal(manifest.widgets.find((entry) => entry.id === "forward.iqiyi.tv.search").version, "1.4.4");
 
 for (const entry of manifest.widgets) {
   const filename = new URL(entry.url).pathname.split("/").pop();
@@ -34,7 +34,8 @@ for (const entry of manifest.widgets) {
   assert.equal(entry.requiredVersion, metadata.requiredVersion);
   assert.equal(entry.version, metadata.version);
   assert.equal(entry.author, metadata.author);
-  assert.equal(new URL(entry.url).searchParams.get("v"), metadata.version, `${filename} URL 缺少版本缓存参数`);
+  assert.match(entry.url, /\.js$/, `${filename} URL 必须以 .js 结尾，避免 Forward 模块类型校验失败`);
+  assert.equal(new URL(entry.url).search, "", `${filename} URL 不得携带客户端可能误判的查询参数`);
   assert.ok(Array.isArray(metadata.modules) && metadata.modules.length > 0, `${filename} modules 不能为空`);
 
   for (const module of metadata.modules) {
