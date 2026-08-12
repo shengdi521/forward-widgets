@@ -9,8 +9,8 @@ const root = path.resolve(__dirname, "..");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "forward-widgets.fwd"), "utf8"));
 
 assert.equal(manifest.widgets.length, 2);
-assert.equal(manifest.widgets.find((entry) => entry.id === "forward.bilibili.tv.search").version, "1.4.3");
-assert.equal(manifest.widgets.find((entry) => entry.id === "forward.iqiyi.tv.search").version, "1.4.1");
+assert.equal(manifest.widgets.find((entry) => entry.id === "forward.bilibili.tv.search").version, "1.4.6");
+assert.equal(manifest.widgets.find((entry) => entry.id === "forward.iqiyi.tv.search").version, "1.4.3");
 
 for (const entry of manifest.widgets) {
   const filename = new URL(entry.url).pathname.split("/").pop();
@@ -41,9 +41,7 @@ for (const entry of manifest.widgets) {
     assert.equal(typeof sandbox[module.functionName], "function", `${filename} 缺少 ${module.functionName}`);
   }
   assert.equal(typeof sandbox[metadata.search.functionName], "function", `${filename} 缺少搜索函数`);
-  const expectedSearchParams = entry.id === "forward.bilibili.tv.search"
-    ? ["keyword", "page"]
-    : ["keyword"];
+  const expectedSearchParams = ["keyword", "page"];
   assert.deepEqual(
     Array.from(metadata.search.params, (param) => param.name),
     expectedSearchParams,

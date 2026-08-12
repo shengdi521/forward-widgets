@@ -1,9 +1,9 @@
 WidgetMetadata = {
   id: "forward.bilibili.tv.search",
   title: "B站影视搜索",
-  version: "1.4.5",
+  version: "1.4.6",
   requiredVersion: "0.0.2",
-  description: "使用可选的个人 Cookie 搜索并在线观看 B站官方影视；优先加载账号可达的 8K、杜比视界、HDR、4K 等 DASH 画质，并保留 MP4 兼容线路。",
+  description: "使用可选的个人 Cookie 搜索并在线观看 B站官方影视；优先加载账号可达的最高 DASH 画质，保留 MP4 兼容线路，并转换可用官方字幕。",
   author: "Custom",
   site: "https://www.bilibili.com",
   detailCacheDuration: 0,
@@ -558,8 +558,11 @@ async function loadDetail(link) {
     cacheDetail(route, detail);
     return detail;
   } catch (error) {
+    if (cached) {
+      console.warn("[B站详情] 平台详情暂不可用，继续使用当前搜索结果:", error.message || error);
+      return cached;
+    }
     console.error("[B站详情] 加载失败:", error.message || error);
-    if (cached) return cached;
     throw error;
   }
 }
@@ -604,7 +607,7 @@ function bilibiliMixedStreamFormat(result) {
 
 function hasSingleBilibiliDurl(result) {
   var durls = result && Array.isArray(result.durl) ? result.durl : [];
-  return durls.length >= 1 && !!durls[0].url;
+  return durls.length === 1 && !!durls[0].url;
 }
 
 function bilibiliXmlEscape(value) {
@@ -795,7 +798,6 @@ function buildBilibiliDashResources(result, epId) {
     return orderDiff || right - left;
   });
   var headers = bilibiliPlaybackHeaders(epId);
-  headers["X-Forward-Skip-Redirect-Probe"] = "1";
 
   return qualities.map(function (quality, index) {
     var manifest = buildBilibiliDashManifest(qualityGroups[String(quality)], audios, dash.duration);
@@ -902,6 +904,11 @@ async function loadBestBilibiliMixedStream(playRoute) {
   var fallback = await requestBilibiliPlayResult(playRoute, 80, false);
   if (hasSingleBilibiliDurl(fallback)) return fallback;
 
+  var fallbackDurls = Array.isArray(fallback.durl) ? fallback.durl : [];
+  if (fallbackDurls.length > 1 ||
+      (html5Mixed && Array.isArray(html5Mixed.durl) && html5Mixed.durl.length > 1)) {
+    throw new Error("该视频仅返回多段混流，当前 Forward 播放器暂不支持连续拼接");
+  }
   if (fallback.dash || (html5Mixed && html5Mixed.dash)) {
     throw new Error("该视频仅返回分离音视频流，当前 Forward 资源模型无法直接合并");
   }
@@ -1001,11 +1008,60 @@ function normalizeBilibiliSubtitleLanguage(value) {
   return aliases[language] || language || "und";
 }
 
+function bilibiliVttTimestamp(value) {
+  var milliseconds = Math.max(0, Math.round(Number(value || 0) * 1000));
+  var hours = Math.floor(milliseconds / 3600000);
+  var minutes = Math.floor((milliseconds % 3600000) / 60000);
+  var seconds = Math.floor((milliseconds % 60000) / 1000);
+  var remainder = milliseconds % 1000;
+  function pad(number, length) {
+    var text = String(number);
+    while (text.length < length) text = "0" + text;
+    return text;
+  }
+  return pad(hours, 2) + ":" + pad(minutes, 2) + ":" + pad(seconds, 2) + "." + pad(remainder, 3);
+}
+
+function buildBilibiliVtt(value) {
+  var data = value;
+  if (typeof data === "string") {
+    try {
+      data = JSON.parse(data);
+    } catch (error) {
+      return "";
+    }
+  }
+  var cues = data && Array.isArray(data.body) ? data.body : [];
+  if (!cues.length) return "";
+  var lines = ["WEBVTT", ""];
+  for (var index = 0; index < cues.length; index += 1) {
+    var cue = cues[index] || {};
+    var start = Number(cue.from);
+    var end = Number(cue.to);
+    var content = String(cue.content || "").replace(/\r\n?/g, "\n").trim();
+    if (!isFinite(start) || !isFinite(end) || end <= start || !content) continue;
+    lines.push(String(index + 1));
+    lines.push(bilibiliVttTimestamp(start) + " --> " + bilibiliVttTimestamp(end));
+    lines.push(content);
+    lines.push("");
+  }
+  return lines.length > 2 ? lines.join("\n") : "";
+}
+
+async function loadBilibiliVttDataUrl(url, epId) {
+  var response = await Widget.http.get(url, {
+    headers: bilibiliPlaybackHeaders(epId),
+  });
+  var vtt = buildBilibiliVtt(response && response.data);
+  return vtt ? "data:text/vtt;base64," + bilibiliBase64(vtt) : "";
+}
+
 async function loadSubtitle(params = {}) {
   var playRoute = parseBilibiliPlayRoute(params.link);
   if (!playRoute) return [];
-  var runtimeCookie = sanitizeCookie(params.bilibiliCookie);
-  if (runtimeCookie) lastBilibiliCookie = runtimeCookie;
+  if (params.bilibiliCookie !== undefined) {
+    lastBilibiliCookie = sanitizeCookie(params.bilibiliCookie);
+  }
 
   try {
     playRoute = await resolveBilibiliPlayRoute(playRoute);
@@ -1026,19 +1082,28 @@ async function loadSubtitle(params = {}) {
       ? subtitleData.subtitles
       : [];
     var seen = {};
-    return subtitles.map(function (subtitle, index) {
+    var converted = await Promise.all(subtitles.map(async function (subtitle, index) {
       var url = httpsUrl(subtitle && (subtitle.subtitle_url || subtitle.url));
       if (!url || !isOfficialBilibiliSubtitleUrl(url) || seen[url]) return null;
       seen[url] = true;
       var language = normalizeBilibiliSubtitleLanguage(subtitle.lan);
-      return {
-        id: "bilibili-subtitle-" + String(subtitle.id || language || index),
-        title: cleanText(subtitle.lan_doc || subtitle.lan || "B站官方字幕"),
-        lang: language,
-        count: 1,
-        url: url,
-      };
-    }).filter(function (subtitle) { return !!subtitle; });
+      try {
+        var dataUrl = await loadBilibiliVttDataUrl(url, playRoute.epId);
+        if (!dataUrl) return null;
+        return {
+          id: "bilibili-subtitle-" + String(subtitle.id || language || index),
+          title: cleanText(subtitle.lan_doc || subtitle.lan || "B站官方字幕"),
+          lang: language,
+          count: 1,
+          url: dataUrl,
+        };
+      } catch (subtitleError) {
+        console.warn("[B站字幕] 转换失败:", cleanText(subtitle.lan_doc || subtitle.lan),
+          subtitleError.message || subtitleError);
+        return null;
+      }
+    }));
+    return converted.filter(function (subtitle) { return !!subtitle; });
   } catch (error) {
     console.warn("[B站字幕] 加载失败:", error.message || error);
     return [];
@@ -1053,8 +1118,9 @@ async function loadResource(params = {}) {
     throw new Error("B站播放参数不完整，请重新打开影视详情后选择分集");
   }
 
-  var runtimeCookie = sanitizeCookie(params.bilibiliCookie);
-  if (runtimeCookie) lastBilibiliCookie = runtimeCookie;
+  if (params.bilibiliCookie !== undefined) {
+    lastBilibiliCookie = sanitizeCookie(params.bilibiliCookie);
+  }
 
   try {
     playRoute = await resolveBilibiliPlayRoute(playRoute);
@@ -1077,28 +1143,23 @@ async function loadResource(params = {}) {
     try {
       var result = await loadBestBilibiliMixedStream(resolvedRoute);
       var durls = result.durl;
+      var urls = [durls[0].url].concat(Array.isArray(durls[0].backup_url) ? durls[0].backup_url : []);
       var seen = {};
       var quality = bilibiliQualityLabel(result);
       var streamFormat = bilibiliMixedStreamFormat(result);
-      var totalSegments = durls.length;
-      mixedResources = durls.reduce(function (acc, durl, segIndex) {
-        var segUrls = [durl.url].concat(Array.isArray(durl.backup_url) ? durl.backup_url : []);
-        var segLabel = totalSegments > 1 ? (" · 分片 " + (segIndex + 1) + "/" + totalSegments) : "";
-        segUrls.forEach(function (url, urlIndex) {
-          var playbackUrl = httpsUrl(url);
-          if (!playbackUrl || seen[playbackUrl]) return;
-          seen[playbackUrl] = true;
-          var isMainUrl = urlIndex === 0;
-          acc.push({
-            name: "B站 " + quality + segLabel + (isMainUrl ? " · 账号当前最高" : " · 备用线路 " + urlIndex),
-            description: "B站官方" + (totalSegments > 1 ? "分段 " : "单路 ") + streamFormat + " · HTML5 高画质优先 · 默认音轨",
-            url: playbackUrl,
-            customHeaders: bilibiliPlaybackHeaders(epId),
-            playerType: "app",
-          });
-        });
-        return acc;
-      }, []);
+      mixedResources = urls.map(function (url, index) {
+        var playbackUrl = httpsUrl(url);
+        if (!playbackUrl || seen[playbackUrl]) return null;
+        seen[playbackUrl] = true;
+        return {
+          name: "B站 " + quality +
+            (index === 0 ? " · 账号可达最高 · MP4兼容" : " · 同画质备用线路 " + index),
+          description: "B站官方单路 " + streamFormat + " · HTML5 高画质优先 · 默认音轨",
+          url: playbackUrl,
+          customHeaders: bilibiliPlaybackHeaders(epId),
+          playerType: "app",
+        };
+      }).filter(function (item) { return !!item; });
     } catch (error) {
       mixedError = error;
       console.warn("[B站播放] MP4 兼容线路请求失败:", error.message || error);
