@@ -289,8 +289,13 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "forward.bilibili.tv.search");
   assert.equal(sandbox.WidgetMetadata.title, "B站影视搜索");
-  assert.equal(sandbox.WidgetMetadata.version, "1.4.5");
+  assert.equal(sandbox.WidgetMetadata.version, "1.4.6");
   assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.2");
+  assert.equal(
+    sandbox.hasSingleBilibiliDurl({ durl: [{ url: "https://example.com/1.mp4" }, { url: "https://example.com/2.mp4" }] }),
+    false,
+    "多个 durl 是连续分片，不得伪装成可独立播放的完整线路",
+  );
   assert.equal(sandbox.WidgetMetadata.modules.length, 2);
   assert.equal(sandbox.WidgetMetadata.modules[0].id, "loadResource");
   assert.equal(sandbox.WidgetMetadata.modules[0].functionName, "loadResource");
