@@ -1,8 +1,8 @@
 WidgetMetadata = {
   id: "forward.bilibili.tv.search",
   title: "B站影视搜索",
-  version: "1.4.7",
-  requiredVersion: "0.0.2",
+  version: "1.4.8",
+  requiredVersion: "0.0.1",
   description: "使用可选的个人 Cookie 搜索并在线观看 B站官方影视；优先加载账号可达的最高 DASH 画质，保留 MP4 兼容线路，并转换可用官方字幕。",
   author: "Custom",
   site: "https://www.bilibili.com",

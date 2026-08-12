@@ -1,0 +1,16 @@
+{
+  "title": "B站影视模块",
+  "description": "B站全影视在线搜索与官方播放模块",
+  "icon": "https://assets.vvebo.vip/scripts/icon.png",
+  "widgets": [
+    {
+      "id": "forward.bilibili.tv.search",
+      "title": "B站影视搜索",
+      "description": "使用可选的个人 Cookie 搜索并在线观看 B站官方影视；优先加载账号可达的最高 DASH 画质，保留 MP4 兼容线路，并转换可用官方字幕。",
+      "requiredVersion": "0.0.1",
+      "version": "1.4.8",
+      "author": "Custom",
+      "url": "https://raw.githubusercontent.com/shengdi521/forward-widgets/refs/heads/main/widgets/bilibili-tv-search.js"
+    }
+  ]
+}

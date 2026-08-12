@@ -7,19 +7,19 @@
       "id": "forward.bilibili.tv.search",
       "title": "B站影视搜索",
       "description": "使用可选的个人 Cookie 搜索并在线观看 B站官方影视；优先加载账号可达的最高 DASH 画质，保留 MP4 兼容线路，并转换可用官方字幕。",
-      "requiredVersion": "0.0.2",
-      "version": "1.4.7",
+      "requiredVersion": "0.0.1",
+      "version": "1.4.8",
       "author": "Custom",
-      "url": "https://raw.githubusercontent.com/shengdi521/forward-widgets/main/widgets/bilibili-tv-search.js"
+      "url": "https://raw.githubusercontent.com/shengdi521/forward-widgets/refs/heads/main/widgets/bilibili-tv-search.js"
     },
     {
       "id": "forward.iqiyi.tv.search",
       "title": "爱奇艺影视搜索",
       "description": "使用可选的个人 Cookie 搜索并在线观看爱奇艺官方影视；每个可用音轨自动优先账号可达的最高清晰度，并支持官方字幕切换。",
-      "requiredVersion": "0.0.2",
-      "version": "1.4.4",
+      "requiredVersion": "0.0.1",
+      "version": "1.4.5",
       "author": "Custom",
-      "url": "https://raw.githubusercontent.com/shengdi521/forward-widgets/main/widgets/iqiyi-tv-search.js"
+      "url": "https://raw.githubusercontent.com/shengdi521/forward-widgets/refs/heads/main/widgets/iqiyi-tv-search.js"
     }
   ]
 }
