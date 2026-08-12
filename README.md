@@ -8,7 +8,7 @@ ForwardWidget 全影视在线搜索模块：
 ## 订阅地址
 
 ```text
-https://raw.githubusercontent.com/shengdi521/forward-widgets/main/forward-widgets.fwd?v=1.4.4
+https://raw.githubusercontent.com/shengdi521/forward-widgets/main/forward-widgets.fwd?v=1.4.5
 ```
 
 在手机或 iPad 的 Forward 中添加上述订阅地址，即可看到两个独立模块。
@@ -21,4 +21,6 @@ https://raw.githubusercontent.com/shengdi521/forward-widgets/main/forward-widget
 
 模块仅调用平台官方接口，过滤短视频、用户投稿和站外跳转。点击详情中的正片或分集后，Forward 会动态加载账号当前有权观看的官方播放线路；会员资格、地区限制和试看范围均由平台服务器判定，不绕过 DRM 或会员权限。
 
-Forward 当前没有独立音轨字段，因此爱奇艺的国语、粤语等音轨会显示成不同播放线路；每条音轨均把账号可达的最高清晰度排在第一。B站通过 `fnval=4048` 请求账号实际可达的全部 DASH 视频与音频轨，并在运行时为每个画质生成同时包含视频、音频和 `SegmentBase` 的 MPD 资源；8K、杜比视界、HDR、4K、1080P 等平台实际返回的档位会按最高画质优先排列。模块同时保留 `platform=html5`、`high_quality=1` 的单路 MP4 兼容线路，并按接口公布的可用档位精确重试。模块不会把无声 DASH 视频轨伪装成完整线路，也不会把不同音频码率伪装成语言音轨。仅在平台返回外置字幕时显示字幕选项；画面内嵌字幕无法关闭或切换。
+Forward 当前没有独立音轨字段，因此爱奇艺的国语、粤语等音轨会显示成不同播放线路；每个音轨把最高画质放在前面，并最多保留一个兼容备用，减少手机端重复线路。B站通过 `fnval=4048` 请求账号实际可达的全部 DASH 视频与音频轨，并在运行时为每个画质生成同时包含视频、音频和 `SegmentBase` 的 MPD 资源；8K、杜比视界、HDR、4K、1080P 等平台实际返回的档位会按最高画质优先排列。模块同时保留 `platform=html5`、`high_quality=1` 的单路 MP4 兼容线路，并按接口公布的可用档位精确重试。模块不会把无声 DASH 视频轨伪装成完整线路，也不会把不同音频码率伪装成语言音轨。B站 BCC 字幕会在运行时转成 WebVTT；爱奇艺只展示平台返回的官方 VTT/SRT。画面内嵌字幕无法关闭或切换。
+
+更新旧版本时，请先刷新订阅；如果 Forward 仍显示旧版本号，再删除旧模块缓存并重新添加订阅。模块版本应显示为 B站 `1.4.5`、爱奇艺 `1.4.3`。

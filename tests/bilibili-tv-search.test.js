@@ -262,6 +262,16 @@ const sandbox = {
             },
           };
         }
+        if (url.includes("aisubtitle.hdslb.com/bfs/ai_subtitle/test.json")) {
+          return {
+            data: {
+              body: [
+                { from: 1.25, to: 3.5, content: "第一句字幕" },
+                { from: 4, to: 6.125, content: "第二句字幕" },
+              ],
+            },
+          };
+        }
         throw new Error("unmocked URL: " + url);
       },
     },
@@ -279,7 +289,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "forward.bilibili.tv.search");
   assert.equal(sandbox.WidgetMetadata.title, "B站影视搜索");
-  assert.equal(sandbox.WidgetMetadata.version, "1.4.4");
+  assert.equal(sandbox.WidgetMetadata.version, "1.4.5");
   assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.2");
   assert.equal(sandbox.WidgetMetadata.modules.length, 2);
   assert.equal(sandbox.WidgetMetadata.modules[0].id, "loadResource");
@@ -397,7 +407,11 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.match(resources[0].url, /^data:application\/dash\+xml;base64,/);
   assert.equal(resources[0].playerType, "app");
   assert.equal(resources[0].customHeaders.Cookie, undefined, "Cookie 不得发送给视频 CDN");
-  assert.equal(resources[0].customHeaders["X-Forward-Skip-Redirect-Probe"], "1");
+  assert.equal(
+    resources[0].customHeaders["X-Forward-Skip-Redirect-Probe"],
+    undefined,
+    "普通 DASH 点播不应跳过 Forward 起播前探测",
+  );
   const manifestXml = Buffer.from(resources[0].url.split(",")[1], "base64").toString("utf8");
   assert.ok(!manifestXml.includes(TEST_COOKIE), "DASH MPD 不得包含账号 Cookie");
   assert.match(manifestXml, /<AdaptationSet id="1" contentType="video"/);
@@ -408,7 +422,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.match(manifestXml, /<Initialization range="0-999"\/>/);
   const mp4Resource = resources.find((resource) => /^https:\/\//.test(resource.url));
   assert.ok(mp4Resource, "应保留单路 MP4 兼容资源");
-  assert.match(mp4Resource.name, /1080P 高码率.*最高单路画质/);
+  assert.match(mp4Resource.name, /1080P 高码率.*账号可达最高.*MP4兼容/);
   assert.match(mp4Resource.description, /单路 MP4/);
 
   const fallbackCallStart = calls.length;
@@ -445,7 +459,13 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(subtitles.length, 1, "字幕应去重并过滤非官方地址");
   assert.equal(subtitles[0].title, "中文（简体）");
   assert.equal(subtitles[0].lang, "zh-CN");
-  assert.match(subtitles[0].url, /^https:\/\/aisubtitle\.hdslb\.com\//);
+  assert.match(subtitles[0].url, /^data:text\/vtt;base64,/);
+  const subtitleVtt = Buffer.from(subtitles[0].url.split(",")[1], "base64").toString("utf8");
+  assert.match(subtitleVtt, /^WEBVTT\n/);
+  assert.match(subtitleVtt, /00:00:01\.250 --> 00:00:03\.500/);
+  assert.match(subtitleVtt, /第一句字幕/);
+  const subtitleFileCall = calls.find((call) => call.url.includes("aisubtitle.hdslb.com"));
+  assert.equal(subtitleFileCall.options.headers.Cookie, undefined, "Cookie 不得发送给字幕 CDN");
   assert.equal((await sandbox.loadSubtitle({ link: "iqiyi-play:1:abc:x" })).length, 0);
   assert.equal((await sandbox.loadResource({ link: "iqiyi-play:1:abc:x" })).length, 0);
 
@@ -513,6 +533,13 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.match(fallbackSearchCalls[0].url, /\/wbi\/search\/type/);
   assert.doesNotMatch(fallbackSearchCalls[1].url, /\/wbi\//);
   assert.equal(fallbackSearchCalls[1].options.params.w_rid, undefined);
+
+  await sandbox.loadSubtitle({
+    link: detail.episodeItems[0].link,
+    bilibiliCookie: "",
+  });
+  const clearedSubtitleCall = calls.filter((call) => call.url.includes("/x/player/v2")).at(-1);
+  assert.equal(clearedSubtitleCall.options.headers.Cookie, undefined, "清空配置后不得继续沿用旧 B站 Cookie");
 
   console.log("OK bilibili-tv-search", {
     searchRequests: calls.filter((call) => call.url.includes("/search/type")).length,

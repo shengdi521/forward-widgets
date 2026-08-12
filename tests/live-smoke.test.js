@@ -81,11 +81,12 @@ async function probeResource(resource) {
 async function probeSubtitle(subtitle) {
   const response = await fetch(subtitle.url);
   const contentType = response.headers.get("content-type") || "";
-  if (response.body) await response.body.cancel();
+  const body = await response.text();
+  const isVtt = /^data:text\/vtt/i.test(subtitle.url) || /text\/vtt/i.test(contentType);
   return {
     status: response.status,
     contentType,
-    valid: response.ok,
+    valid: response.ok && (!isVtt || body.trimStart().startsWith("WEBVTT")),
   };
 }
 
@@ -118,13 +119,39 @@ async function runCases(platform, sandbox, cases, cookieName, cookieValue, expec
     const resources = await sandbox.loadResource({ link: episode.link, [cookieName]: cookieValue || "" });
     if (!resources.length) throw new Error(`${platform} ${item.title} 没有播放线路`);
     if (!topLinePattern.test(String(resources[0].name || ""))) {
-      throw new Error(`${platform} ${item.title} 第一条线路不是预期的最高画质`);
+      throw new Error(
+        `${platform} ${item.title} 第一条线路不是预期的最高画质：${String(resources[0].name || "未命名")}`,
+      );
     }
     const probe = await probeResource(resources[0]);
     if (!probe.valid) throw new Error(`${platform} ${item.title} 播放线路探测失败：HTTP ${probe.status}`);
     const detail = await sandbox.loadDetail(item.link);
     const detailEpisode = firstPlayableEpisode(detail, item);
     if (!detailEpisode) throw new Error(`${platform} ${item.title} 详情页没有可播放分集路由`);
+    const detailEpisodes = [...(detail?.episodeItems || [])]
+      .filter((candidate) => /^(?:bilibili|iqiyi)-play:/.test(String(candidate.link || "")));
+    const lastDetailEpisode = detailEpisodes.at(-1);
+    let lastEpisodeStatus = "-";
+    if (lastDetailEpisode && lastDetailEpisode.link !== detailEpisode.link) {
+      try {
+        const lastResources = await sandbox.loadResource({
+          link: lastDetailEpisode.link,
+          [cookieName]: cookieValue || "",
+        });
+        if (!lastResources.length) throw new Error(`${platform} ${item.title} 最后一集没有播放线路`);
+        const lastProbe = await probeResource(lastResources[0]);
+        if (!lastProbe.valid) {
+          throw new Error(`${platform} ${item.title} 最后一集播放线路探测失败：HTTP ${lastProbe.status}`);
+        }
+        lastEpisodeStatus = lastProbe.status;
+      } catch (lastError) {
+        if (!cookieValue && /Cookie|会员权限|地区限制/.test(String(lastError?.message || lastError))) {
+          lastEpisodeStatus = "需Cookie/会员";
+        } else {
+          throw lastError;
+        }
+      }
+    }
     const subtitles = await sandbox.loadSubtitle({ link: episode.link, [cookieName]: cookieValue || "" });
     const subtitleProbes = [];
     for (const subtitle of subtitles) {
@@ -141,6 +168,7 @@ async function runCases(platform, sandbox, cases, cookieName, cookieValue, expec
       title: item.title,
       directFromSearch: true,
       episodes: detail?.episodeItems?.length || item.episodeItems?.length || 0,
+      lastEpisodeStatus,
       resources: resources.length,
       subtitles: subtitles.length,
       subtitleStatus: subtitleProbes.join(",") || "-",
@@ -189,7 +217,7 @@ async function runCases(platform, sandbox, cases, cookieName, cookieValue, expec
       iqiyiCases.slice(caseOffset, caseOffset + caseLimit),
       "iqiyiCookie",
       process.env.IQIYI_COOKIE,
-      ["keyword"],
+      ["keyword", "page"],
       /账号当前最高/,
     )));
   console.table(rows);

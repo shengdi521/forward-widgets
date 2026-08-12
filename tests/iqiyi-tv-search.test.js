@@ -97,6 +97,15 @@ const sandbox = {
                     }),
                   },
                   { template: 101, albumInfo: album() },
+                  {
+                    template: 106,
+                    albumInfo: album({
+                      title: "奔跑吧官方",
+                      qipuId: 7009024367762100,
+                      channel: "综艺,6",
+                      pageUrl: "https://www.iqiyi.com/v_1w47sc0gkwo.html",
+                    }),
+                  },
                   { template: 101, albumInfo: album({ qipuId: 99, siteId: "qq", siteName: "腾讯" }) },
                   { template: 108, albumInfo: album({ qipuId: 100, channel: "电影,1" }) },
                 ],
@@ -192,7 +201,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "forward.iqiyi.tv.search");
   assert.equal(sandbox.WidgetMetadata.title, "爱奇艺影视搜索");
-  assert.equal(sandbox.WidgetMetadata.version, "1.4.1");
+  assert.equal(sandbox.WidgetMetadata.version, "1.4.3");
   assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.2");
   assert.equal(sandbox.WidgetMetadata.modules.length, 2);
   assert.equal(sandbox.WidgetMetadata.modules[0].id, "loadResource");
@@ -211,7 +220,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(sandbox.WidgetMetadata.globalParams[0].placeholders, undefined);
   assert.deepEqual(
     Array.from(sandbox.WidgetMetadata.search.params, (param) => param.name),
-    ["keyword"],
+    ["keyword", "page"],
   );
   await assert.rejects(() => sandbox.search({ keyword: "  " }), /请输入要搜索的影视名称/);
 
@@ -225,7 +234,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(calls[0].options.params.key, "莲花楼");
   assert.equal(calls[0].options.params.pageNum, 3);
   assert.equal(calls[0].options.headers.Cookie, TEST_COOKIE);
-  assert.equal(results.length, 5, "应保留五类爱奇艺站内长视频并去重");
+  assert.equal(results.length, 6, "应保留五类爱奇艺站内长视频、官方综艺合集并去重");
   const tv = results.find((item) => item.link === "iqiyi:8077509274258301");
   const movie = results.find((item) => item.link === "iqiyi:7292991076670500");
   assert.equal(tv.title, "莲花楼");
@@ -244,6 +253,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(movie.durationText, "02:53:11");
   assert.equal(movie.episodeItems.length, 1);
   assert.match(movie.episodeItems[0].link, /^iqiyi-play:7292991076670500:/);
+  assert.ok(results.some((item) => item.title === "奔跑吧官方"), "应兼容爱奇艺 template 106 官方综艺合集");
   assert.ok(!JSON.stringify(Array.from(stored.values())).includes(TEST_COOKIE), "缓存不得包含 Cookie");
 
   const directResources = await sandbox.loadResource({
@@ -305,8 +315,10 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.match(resources[0].name, /1080P/);
   assert.match(resources[0].name, /H\.265/);
   assert.match(resources[0].name, /账号当前最高/);
-  assert.match(resources[2].name, /粤语/);
-  assert.match(resources[2].name, /账号当前最高/);
+  assert.match(resources[1].name, /粤语/);
+  assert.match(resources[1].name, /账号当前最高/);
+  assert.match(resources[2].name, /国语.*备用画质/);
+  assert.match(resources[3].name, /粤语.*备用画质/);
   assert.match(resources[0].url, /^https:\/\//);
   assert.equal(resources[0].playerType, "app");
   assert.equal(resources[0].customHeaders.Cookie, undefined, "Cookie 不得发送给视频 CDN");
@@ -321,6 +333,12 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(subtitles[0].url, "https://meta.video.iqiyi.com/subtitle/test.vtt");
   assert.equal((await sandbox.loadSubtitle({ link: "bilibili-play:1:2:3:4" })).length, 0);
   assert.equal((await sandbox.loadResource({ link: "bilibili-play:1:2:3:4" })).length, 0);
+  await sandbox.loadSubtitle({
+    link: detail.episodeItems[0].link,
+    iqiyiCookie: "",
+  });
+  const clearedSubtitleCall = calls.filter((call) => call.url.includes("/jp/tmts/")).at(-1);
+  assert.equal(clearedSubtitleCall.options.headers.Cookie, undefined, "清空配置后不得继续沿用旧爱奇艺 Cookie");
 
   console.log("OK iqiyi-tv-search", {
     results: results.length,
