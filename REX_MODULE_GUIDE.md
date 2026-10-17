@@ -59,7 +59,7 @@ WidgetMetadata = {
 
 - `widgets/bilibili-rex.js`：B站全影视搜索，Rex 列表/详情/流/字幕结构；保留 WBI、Cookie、DASH/MP4 兼容线路和官方字幕逻辑。
 - `widgets/iqiyi-rex.js`：爱奇艺全影视搜索，Rex 列表/详情/流/字幕结构；保留 Cookie、最高可达画质、音轨和官方字幕逻辑。
-- `widgets/javranking-rex.js`：JavRanking 榜单、搜索和详情；榜单条目使用 `type: "link"`，详情页公开播放地址由 `loadResource` 动态读取。
+- `widgets/javranking-rex.js`：JavRanking 榜单、搜索和详情；保留已验证可播放版本的榜单条目和 `loadResource` 链路，只修正影片标题解析。
 
 ## 修改后检查
 
