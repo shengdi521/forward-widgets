@@ -50,9 +50,9 @@ var JAVRANKING_SORTS = [
 WidgetMetadata = {
   id: "forward.javranking.rankings",
   title: "JavRanking 排行榜",
-  version: "1.0.0",
+  version: "1.1.0",
   requiredVersion: "0.0.1",
-  description: "按 JavRanking 中文网站分类浏览公开成人影片排行榜、搜索结果和条目详情。仅限成年人使用。",
+  description: "将 JavRanking 的 18 个榜单作为独立分类入口；打开具体榜单后再获取该榜单中的影片链接，并支持搜索和条目详情。仅限成年人使用。",
   author: "Custom",
   site: JAVRANKING_ORIGIN + "/zh-hans/rankings/",
   detailCacheDuration: 600,
@@ -64,26 +64,19 @@ WidgetMetadata = {
       description: "仅填写你自己浏览器中获得的 Cookie；模块只在请求头临时使用，不保存、不上传、不输出。不要填写账号密码。",
     },
   ],
-  modules: [
-    {
-      id: "checkAccess",
-      title: "检测 JavRanking 连通性",
-      functionName: "checkAccess",
-      cacheDuration: 0,
-      params: [],
-    },
-    {
-      id: "loadList",
-      title: "浏览排行榜",
-      functionName: "loadList",
+  modules: JAVRANKING_RANKINGS.map(function (ranking) {
+    return {
+      id: "ranking-" + ranking.path.replace(/^\/rankings\//, "").replace(/\/$/, ""),
+      title: ranking.title,
+      description: "打开“" + ranking.title + "”后获取该榜单中的影片条目。",
+      functionName: "loadRanking",
       cacheDuration: 300,
       params: [
         {
           name: "ranking",
-          title: "排行榜",
-          type: "enumeration",
-          enumOptions: JAVRANKING_RANKINGS,
-          value: JAVRANKING_RANKINGS[0].path,
+          title: "榜单路径",
+          type: "constant",
+          value: ranking.path,
         },
         {
           name: "format",
@@ -108,8 +101,8 @@ WidgetMetadata = {
         },
         { name: "page", title: "页码", type: "page" },
       ],
-    },
-  ],
+    };
+  }),
   search: {
     title: "搜索 JavRanking",
     functionName: "search",
@@ -295,7 +288,7 @@ function addPageQuery(url, params) {
   return values.length ? url + "?" + values.join("&") : url;
 }
 
-async function loadList(params) {
+async function loadRanking(params) {
   params = params || {};
   if (params.javrankingCookie !== undefined) lastJavRankingCookie = sanitizeCookie(params.javrankingCookie);
   var ranking = rankingByPath(params.ranking);
@@ -317,6 +310,11 @@ async function loadList(params) {
   }
   if (!items.length) throw new Error("未从 JavRanking 榜单中找到影片条目，可能是网站结构更新或当前请求被拦截。");
   return items;
+}
+
+// 保留旧函数名，方便已经缓存旧版本模块的客户端平滑升级。
+async function loadList(params) {
+  return loadRanking(params);
 }
 
 function parseDate(text) {

@@ -24,9 +24,9 @@
     {
       "id": "forward.javranking.rankings",
       "title": "JavRanking 排行榜",
-      "description": "按 JavRanking 中文网站分类浏览公开成人影片排行榜、搜索结果和条目详情。仅限成年人使用。",
+      "description": "将 JavRanking 的 18 个榜单作为独立分类入口；打开具体榜单后再获取该榜单中的影片链接，并支持搜索和条目详情。仅限成年人使用。",
       "requiredVersion": "0.0.1",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "Custom",
       "url": "https://raw.githubusercontent.com/shengdi521/forward-widgets/refs/heads/main/widgets/javranking-rankings.js"
     }

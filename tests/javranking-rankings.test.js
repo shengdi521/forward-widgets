@@ -48,24 +48,72 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "forward.javranking.rankings");
   assert.equal(sandbox.WidgetMetadata.requiredVersion, "0.0.1");
-  assert.equal(sandbox.WidgetMetadata.modules.length, 2);
-  assert.equal(sandbox.WidgetMetadata.modules[0].functionName, "checkAccess");
-  assert.equal(sandbox.WidgetMetadata.modules[1].functionName, "loadList");
-  assert.equal(sandbox.WidgetMetadata.modules[1].params[0].enumOptions.length, 18);
+  assert.equal(sandbox.WidgetMetadata.version, "1.1.0");
+  assert.equal(sandbox.WidgetMetadata.modules.length, 18);
+  assert.ok(sandbox.WidgetMetadata.modules.every((module) => module.functionName === "loadRanking"));
+  assert.deepEqual(
+    Array.from(sandbox.WidgetMetadata.modules, (module) => module.title),
+    [
+      "DMM 本周热销榜",
+      "DMM 月度DVD榜 2026.10",
+      "JAVDB TOP250",
+      "JavLibray TOP250",
+      "JAVDB 无码 TOP250",
+      "JAVDB FC2 TOP250",
+      "JAVDB TOP250 2025",
+      "DMM 月度热销榜 2025.12",
+      "DMM 月度热销榜 2025.11",
+      "JAVDB TOP250 2024",
+      "JAVDB TOP250 2023",
+      "JAVDB TOP250 2022",
+      "JAVDB TOP250 2021",
+      "JAVDB TOP250 2020",
+      "JAVDB TOP250 2019",
+      "JAVDB TOP250 2018",
+      "JAVDB TOP250 2017",
+      "JAVDB TOP250 2016",
+    ],
+  );
+  assert.equal(sandbox.WidgetMetadata.modules.some((module) => module.params[0].type === "enumeration"), false);
+  assert.deepEqual(
+    Array.from(sandbox.WidgetMetadata.modules, (module) => module.params[0].type),
+    Array(18).fill("constant"),
+  );
+  assert.deepEqual(
+    Array.from(sandbox.WidgetMetadata.modules, (module) => module.params[0].value),
+    [
+      "/rankings/dmm-weekly/",
+      "/rankings/dmm-monthly-2026-10/",
+      "/rankings/javdb-top250/",
+      "/rankings/javlibrary-top250/",
+      "/rankings/javdb-uncensored-top250/",
+      "/rankings/javdb-fc2-top250/",
+      "/rankings/javdb-top250-2025/",
+      "/rankings/dmm-monthly-2025-12/",
+      "/rankings/dmm-monthly-2025-11/",
+      "/rankings/javdb-top250-2024/",
+      "/rankings/javdb-top250-2023/",
+      "/rankings/javdb-top250-2022/",
+      "/rankings/javdb-top250-2021/",
+      "/rankings/javdb-top250-2020/",
+      "/rankings/javdb-top250-2019/",
+      "/rankings/javdb-top250-2018/",
+      "/rankings/javdb-top250-2017/",
+      "/rankings/javdb-top250-2016/",
+    ],
+  );
   assert.equal(sandbox.WidgetMetadata.globalParams[0].name, "javrankingCookie");
   assert.equal(
-    sandbox.WidgetMetadata.modules[1].params.slice(1).map((param) => param.name).join(","),
+    sandbox.WidgetMetadata.modules[0].params.slice(1).map((param) => param.name).join(","),
     "format,status,sort,page",
   );
   assert.equal(sandbox.WidgetMetadata.search.params.map((param) => param.name).join(","), "keyword,page");
-  const access = await sandbox.checkAccess({ javrankingCookie: "cf_clearance=test" });
-  assert.equal(access[0].title, "JavRanking 网络可访问");
   await assert.rejects(
     () => sandbox.search({ keyword: "  " }),
     /请输入要搜索的番号、女优名或片商/,
   );
 
-  const list = await sandbox.loadList({
+  const list = await sandbox.loadRanking({
     ranking: "/rankings/dmm-weekly/",
     format: "censored",
     status: "released",
