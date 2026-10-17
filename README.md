@@ -18,9 +18,9 @@ https://raw.githubusercontent.com/shengdi521/forward-widgets/main/javranking.fwd
 如果使用 Rex，请直接添加下面的 JS 模块地址：
 
 ```text
-https://cdn.jsdelivr.net/gh/shengdi521/forward-widgets@0f7d4eb1eb76b8db200253f72171f75e3bbd2dbb/widgets/bilibili-rex.js
-https://cdn.jsdelivr.net/gh/shengdi521/forward-widgets@0f7d4eb1eb76b8db200253f72171f75e3bbd2dbb/widgets/iqiyi-rex.js
-https://cdn.jsdelivr.net/gh/shengdi521/forward-widgets@0f7d4eb1eb76b8db200253f72171f75e3bbd2dbb/widgets/javranking-rex.js
+https://cdn.jsdelivr.net/gh/shengdi521/forward-widgets@ed48fb3e6317e8b52bd1774d56c5cb1394510aa4/widgets/bilibili-rex.js
+https://cdn.jsdelivr.net/gh/shengdi521/forward-widgets@ed48fb3e6317e8b52bd1774d56c5cb1394510aa4/widgets/iqiyi-rex.js
+https://cdn.jsdelivr.net/gh/shengdi521/forward-widgets@ed48fb3e6317e8b52bd1774d56c5cb1394510aa4/widgets/javranking-rex.js
 ```
 
 Rex 版本分别提供 B站、爱奇艺和 JavRanking 三个独立 JS 模块。B站和爱奇艺保留账号 Cookie、最高可达画质、音轨/字幕和播放源逻辑；JavRanking 使用 `type: "video"` 的榜单和搜索模块，并提供 `loadResource` 播放源模块。18 个榜单是独立分类入口，选择榜单后才请求影片条目。
