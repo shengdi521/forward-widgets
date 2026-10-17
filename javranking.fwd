@@ -1,0 +1,16 @@
+{
+  "title": "JavRanking 排行榜模块",
+  "description": "按 JavRanking 中文网站分类浏览公开成人影片排行榜、搜索结果和条目详情。仅限成年人使用。",
+  "icon": "https://assets.vvebo.vip/scripts/icon.png",
+  "widgets": [
+    {
+      "id": "forward.javranking.rankings",
+      "title": "JavRanking 排行榜",
+      "description": "18 个公开榜单、有码/无码/FC2 制式筛选、发行状态、排序、分页、站内搜索和条目详情。网站防护拒绝请求时会显示明确提示。仅限成年人使用。",
+      "requiredVersion": "0.0.1",
+      "version": "1.0.0",
+      "author": "Custom",
+      "url": "https://raw.githubusercontent.com/shengdi521/forward-widgets/refs/heads/main/widgets/javranking-rankings.js"
+    }
+  ]
+}
