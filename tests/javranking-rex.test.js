@@ -53,10 +53,12 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "javranking_rex");
-  assert.equal(sandbox.WidgetMetadata.version, "1.0");
+  assert.equal(sandbox.WidgetMetadata.version, "1.1.0");
   assert.equal(sandbox.WidgetMetadata.modules.length, 20);
   assert.equal(sandbox.WidgetMetadata.modules.filter((module) => module.type === "video").length, 19);
   assert.equal(sandbox.WidgetMetadata.modules.find((module) => module.id === "loadResource").type, "stream");
+  assert.equal(sandbox.WidgetMetadata.modules.every((module) => module.requiresWebView === true), true);
+  assert.equal(sandbox.WidgetMetadata.search.requiresWebView, true);
   assert.equal(sandbox.WidgetMetadata.modules[0].title, "DMM 本周热销榜");
   assert.equal(sandbox.WidgetMetadata.modules[0].params[1].type, "constant");
   assert.equal(sandbox.WidgetMetadata.modules[0].params[1].value, "/rankings/dmm-weekly/");

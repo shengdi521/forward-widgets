@@ -55,7 +55,7 @@ WidgetMetadata = {
   title: "JavRanking 榜单_Rex",
   author: "Custom",
   description: "JavRanking 18 个榜单分类；选择榜单后获取影片条目、详情和页面公开播放地址。",
-  version: "1.0",
+  version: "1.1.0",
   requiredVersion: "0.0.1",
   site: JAVRANKING_ORIGIN + "/zh-hans/rankings/",
   modules: [
@@ -82,6 +82,7 @@ WidgetMetadata = {
       title: "🔍 搜索影片",
       functionName: "searchList",
       type: "video",
+      requiresWebView: true,
       params: [
         { name: "keyword", title: "番号、女优名或片商", type: "input", value: "" },
         { name: "page", title: "页码", type: "page" },
@@ -93,6 +94,7 @@ WidgetMetadata = {
       description: "读取影片详情页中公开的 m3u8/mp4 地址；未发现直链时保留网页详情入口。",
       functionName: "loadResource",
       type: "stream",
+      requiresWebView: true,
       cacheDuration: 0,
       params: [],
     },
@@ -100,6 +102,7 @@ WidgetMetadata = {
   search: {
     title: "🌐 全局搜索",
     functionName: "searchGlobal",
+    requiresWebView: true,
     params: [
       { name: "keyword", title: "番号、女优名或片商", type: "input", value: "" },
       { name: "page", title: "页码", type: "page", value: "1" },
@@ -123,6 +126,7 @@ function buildRankingModule(title, path) {
     title: title,
     functionName: "loadRanking",
     type: "video",
+    requiresWebView: true,
     params: buildRankingParams(path),
   };
 }
@@ -173,7 +177,12 @@ var lastJavRankingCookie = "";
 
 async function requestPage(url, cookie) {
   try {
-    var headers = { Accept: "text/html, text/markdown;q=0.9, */*;q=0.8" };
+    var headers = {
+      Accept: "text/html, text/markdown;q=0.9, */*;q=0.8",
+      "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+      "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 Mobile Safari/604.1",
+      Referer: JAVRANKING_ORIGIN + "/zh-hans/rankings/",
+    };
     var safeCookie = sanitizeCookie(cookie || lastJavRankingCookie);
     if (safeCookie) headers.Cookie = safeCookie;
     var response = await Widget.http.get(url, {
@@ -285,7 +294,12 @@ async function loadJavRankingTitles() {
   }
   try {
     var response = await Widget.http.get(JAVRANKING_SEARCH_INDEX, {
-      headers: { Accept: "application/json, text/plain;q=0.9, */*;q=0.8" },
+      headers: {
+        Accept: "application/json, text/plain;q=0.9, */*;q=0.8",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 Mobile Safari/604.1",
+        Referer: JAVRANKING_ORIGIN + "/zh-hans/rankings/",
+      },
     });
     var data = response && response.data;
     if (typeof data === "string") data = JSON.parse(data);
