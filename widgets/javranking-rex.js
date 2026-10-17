@@ -55,7 +55,7 @@ WidgetMetadata = {
   title: "JavRanking 榜单_Rex",
   author: "Custom",
   description: "JavRanking 18 个榜单分类；选择榜单后获取影片条目、详情和页面公开播放地址。",
-  version: "1.0",
+  version: "1.0.1",
   requiredVersion: "0.0.1",
   site: JAVRANKING_ORIGIN + "/zh-hans/rankings/",
   modules: [
@@ -189,10 +189,9 @@ async function requestPage(url, cookie) {
 function buildStatusItem(id, title, description) {
   return [{
     id: "javranking-status-" + id,
-    type: "video",
+    type: "text",
     title: title,
-    mediaType: "movie",
-    description: description || "",
+    subTitle: description || "",
   }];
 }
 
@@ -321,7 +320,7 @@ function rankingItem(link, title, image, cardText, rankingTitle, titleMap) {
   description.push("榜单：" + rankingTitle);
   return {
     id: href,
-    type: "video",
+    type: "link",
     title: displayTitle,
     coverUrl: image || undefined,
     posterPath: image || undefined,

@@ -53,7 +53,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
 
 (async () => {
   assert.equal(sandbox.WidgetMetadata.id, "javranking_rex");
-  assert.equal(sandbox.WidgetMetadata.version, "1.0");
+  assert.equal(sandbox.WidgetMetadata.version, "1.0.1");
   assert.equal(sandbox.WidgetMetadata.modules.length, 20);
   assert.equal(sandbox.WidgetMetadata.modules.filter((module) => module.type === "video").length, 19);
   assert.equal(sandbox.WidgetMetadata.modules.find((module) => module.id === "loadResource").type, "stream");
@@ -74,7 +74,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
     page: 2,
   });
   assert.equal(list.length, 2);
-  assert.equal(list[0].type, "video");
+  assert.equal(list[0].type, "link");
   assert.equal(list[0].link, "https://javranking.cc/zh-hans/videos/3318/");
   assert.equal(list[0].title, "SNOS-421 Here We Go！伊藤舞雪");
   assert.equal(list[0].rating, 261);

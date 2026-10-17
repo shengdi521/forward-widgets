@@ -2,7 +2,7 @@
 WidgetMetadata = {
   id: "rex.iqiyi.tv.search",
   title: "爱奇艺影视搜索_Rex",
-  version: "1.4.5",
+  version: "1.4.6",
   requiredVersion: "0.0.1",
   description: "Rex 版爱奇艺官方影视搜索；每个可用音轨自动优先账号可达的最高清晰度，并支持官方字幕切换。",
   author: "Custom",
@@ -17,6 +17,16 @@ WidgetMetadata = {
     },
   ],
   modules: [
+    {
+      id: "searchList",
+      title: "搜索爱奇艺影视",
+      functionName: "searchList",
+      type: "video",
+      params: [
+        { name: "keyword", title: "影视名称", type: "input" },
+        { name: "page", title: "页码", type: "page" },
+      ],
+    },
     {
       id: "loadResource",
       title: "加载资源",
@@ -36,7 +46,7 @@ WidgetMetadata = {
   ],
   search: {
     title: "搜索爱奇艺影视",
-    functionName: "search",
+    functionName: "searchGlobal",
     params: [
       { name: "keyword", title: "影视名称", type: "input" },
       { name: "page", title: "页码", type: "page" },
@@ -221,7 +231,7 @@ function mapMeshEpisode(video, index, mediaType) {
   var isVip = !!(video.payMark || video.payMarkUrl || /ischarge=true/i.test(String(video.playUrl || "")));
   var item = {
     id: pageUrl || "iqiyi-video:" + tvId,
-    type: "url",
+    type: "link",
     mediaType: mediaType,
     title: cleanText(video.title) || "第" + String(video.number || index + 1) + "集",
     backdropPath: httpsUrl(video.img),
@@ -260,7 +270,7 @@ function mapIqiyiSearchItem(album) {
     if (directRoute) {
       episodes.push({
         id: pageUrl || "iqiyi-video:" + direct.tvId,
-        type: "url",
+        type: "link",
         mediaType: mediaType,
         title: mediaType === "movie" ? "正片" : cleanText(album.title),
         backdropPath: httpsUrl(album.imgH || album.img),
@@ -274,7 +284,7 @@ function mapIqiyiSearchItem(album) {
   var peoples = mapPeople(album.actors, "主演").concat(mapPeople(album.directors, "导演"));
   var item = {
     id: pageUrl,
-    type: "url",
+    type: "link",
     mediaType: mediaType,
     title: cleanText(album.title),
     posterPath: httpsUrl(album.img),
@@ -354,6 +364,14 @@ async function search(params = {}) {
   }
 }
 
+async function searchList(params = {}) {
+  return search(params);
+}
+
+async function searchGlobal(params = {}) {
+  return search(params);
+}
+
 function mapIqiyiEpisode(episode, index, mediaType) {
   var pageUrl = httpsUrl(episode.playUrl);
   if (!pageUrl) return null;
@@ -365,7 +383,7 @@ function mapIqiyiEpisode(episode, index, mediaType) {
   if (episode.payMark) description = "会员内容" + (description ? " · " + description : "");
   var item = {
     id: pageUrl,
-    type: "url",
+    type: "link",
     mediaType: mediaType,
     title: title,
     backdropPath: httpsUrl(episode.imageUrl),
@@ -381,13 +399,13 @@ function mapIqiyiEpisode(episode, index, mediaType) {
 
 async function loadDetail(link) {
   var route = String(link || "");
-  if (route.indexOf("iqiyi:") !== 0) return null;
+  if (route.indexOf("iqiyi:") !== 0) return [];
   var albumId = route.slice("iqiyi:".length).trim();
-  if (!/^\d+$/.test(albumId)) return null;
+  if (!/^\d+$/.test(albumId)) return [];
 
   var cached = readCachedDetail(route);
   var mediaType = cached && cached.mediaType === "movie" ? "movie" : "tv";
-  if (mediaType === "movie" && cached) return cached;
+  if (mediaType === "movie" && cached) return [cached];
   try {
     var response = await Widget.http.get(IQIYI_EPISODE_API, {
       headers: iqiyiHeaders(lastIqiyiCookie),
@@ -409,7 +427,7 @@ async function loadDetail(link) {
     var firstEpisode = episodes[0] || null;
     var detail = {
       id: (cached && cached.id) || (firstEpisode && firstEpisode.id) || "https://www.iqiyi.com/",
-      type: "url",
+      type: "link",
       mediaType: mediaType,
       title: (cached && cached.title) || "爱奇艺影视 " + albumId,
       posterPath: (cached && cached.posterPath) || "",
@@ -421,14 +439,19 @@ async function loadDetail(link) {
       peoples: (cached && cached.peoples) || [],
     };
     cacheDetail(route, detail);
-    return detail;
+    return [detail];
   } catch (error) {
     if (cached) {
       console.warn("[爱奇艺详情] 平台详情暂不可用，继续使用当前搜索结果:", error.message || error);
-      return cached;
+      return [cached];
     }
     console.error("[爱奇艺详情] 加载失败:", error.message || error);
-    throw error;
+    return [{
+      id: "iqiyi-detail-error-" + albumId,
+      type: "text",
+      title: "爱奇艺详情加载失败",
+      subTitle: error && error.message ? error.message : String(error),
+    }];
   }
 }
 
