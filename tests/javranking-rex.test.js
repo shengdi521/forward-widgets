@@ -19,6 +19,12 @@ const detailMarkdown = [
   "![海报](https://pics.dmm.co.jp/digital/video/snos00421/snos00421pl.jpg)",
 ].join("\n");
 const playableHtml = '<script>var source = "https://media.example.test/video.m3u8?token=abc";</script>';
+const searchIndex = {
+  videos: [
+    { videoId: 3318, title: "SNOS-421 Here We Go！伊藤舞雪" },
+    { videoId: 4000, title: "ABC-123 测试条目" },
+  ],
+};
 
 const sandbox = {
   WidgetMetadata: undefined,
@@ -29,6 +35,7 @@ const sandbox = {
         calls.push({ url, options });
         if (url.includes("/videos/3318/") && !url.endsWith(".md")) return { status: 200, data: playableHtml };
         if (url.includes("/videos/3318.md")) return { status: 200, data: detailMarkdown };
+        if (url.includes("/search-index.json")) return { status: 200, data: searchIndex };
         if (url.includes("/rankings/") || url.includes("/search/")) return { status: 200, data: rankingMarkdown };
         return { status: 200, data: playableHtml };
       },
@@ -69,6 +76,7 @@ new vm.Script(fs.readFileSync(target, "utf8"), { filename: target }).runInContex
   assert.equal(list.length, 2);
   assert.equal(list[0].type, "video");
   assert.equal(list[0].link, "https://javranking.cc/zh-hans/videos/3318/");
+  assert.equal(list[0].title, "SNOS-421 Here We Go！伊藤舞雪");
   assert.equal(list[0].rating, 261);
   const listCall = calls.find((call) => call.url.includes("/rankings/dmm-weekly/"));
   assert.match(listCall.url, /scope=censored/);
