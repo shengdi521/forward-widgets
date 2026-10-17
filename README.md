@@ -18,12 +18,14 @@ https://raw.githubusercontent.com/shengdi521/forward-widgets/main/javranking.fwd
 如果使用 Rex，请直接添加下面的 JS 模块地址：
 
 ```text
-https://raw.githubusercontent.com/shengdi521/forward-widgets/main/widgets/bilibili-rex.js
-https://raw.githubusercontent.com/shengdi521/forward-widgets/main/widgets/iqiyi-rex.js
-https://raw.githubusercontent.com/shengdi521/forward-widgets/main/widgets/javranking-rex.js
+https://cdn.jsdelivr.net/gh/shengdi521/forward-widgets@main/widgets/bilibili-rex.js
+https://cdn.jsdelivr.net/gh/shengdi521/forward-widgets@main/widgets/iqiyi-rex.js
+https://cdn.jsdelivr.net/gh/shengdi521/forward-widgets@main/widgets/javranking-rex.js
 ```
 
 Rex 版本分别提供 B站、爱奇艺和 JavRanking 三个独立 JS 模块。B站和爱奇艺保留账号 Cookie、最高可达画质、音轨/字幕和播放源逻辑；JavRanking 使用 `type: "video"` 的榜单和搜索模块，并提供 `loadResource` 播放源模块。18 个榜单是独立分类入口，选择榜单后才请求影片条目。
+
+如果当前网络能访问 GitHub，也可以使用对应的 `raw.githubusercontent.com` 地址；Rex 无法访问 GitHub Raw 时，优先使用上面的 jsDelivr 地址。
 
 JavRanking 订阅会把 18 个榜单显示为 18 个独立分类入口。打开某个榜单后，模块才会请求并返回该榜单中的影片条目；榜单名称本身不会作为视频返回。每个榜单都保留制式、发行状态、排序和分页参数。
 
@@ -37,4 +39,4 @@ JavRanking 订阅会把 18 个榜单显示为 18 个独立分类入口。打开�
 
 Forward 当前没有独立音轨字段，因此爱奇艺的国语、粤语等音轨会显示成不同播放线路；每个音轨把最高画质放在前面，并最多保留一个兼容备用，减少手机端重复线路。B站通过 `fnval=4048` 请求账号实际可达的全部 DASH 视频与音频轨，并在运行时为每个画质生成同时包含视频、音频和 `SegmentBase` 的 MPD 资源；8K、杜比视界、HDR、4K、1080P 等平台实际返回的档位会按最高画质优先排列。模块同时保留 `platform=html5`、`high_quality=1` 的单路 MP4 兼容线路，并按接口公布的可用档位精确重试。模块不会把无声 DASH 视频轨伪装成完整线路，也不会把不同音频码率伪装成语言音轨。B站 BCC 字幕会在运行时转成 WebVTT；爱奇艺只展示平台返回的官方 VTT/SRT。画面内嵌字幕无法关闭或切换。
 
-更新旧版本时，请先删除失败的旧订阅和模块缓存，再分别添加新的单平台订阅。模块版本应显示为 B站 `1.4.8`、爱奇艺 `1.4.5`、JavRanking `1.1.0`。
+更新旧版本时，请先删除失败的旧订阅和模块缓存，再分别添加新的单平台订阅。Rex 模块当前版本为 B站 `1.4.9`、爱奇艺 `1.4.6`、JavRanking `1.0.1`。

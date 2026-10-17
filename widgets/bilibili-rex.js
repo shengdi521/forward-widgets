@@ -2,7 +2,7 @@
 WidgetMetadata = {
   id: "rex.bilibili.tv.search",
   title: "B站影视搜索_Rex",
-  version: "1.4.8",
+  version: "1.4.9",
   requiredVersion: "0.0.1",
   description: "Rex 版 B站官方影视搜索；优先加载账号可达的最高 DASH 画质，保留 MP4 兼容线路，并转换可用官方字幕。",
   author: "Custom",
@@ -17,6 +17,16 @@ WidgetMetadata = {
     },
   ],
   modules: [
+    {
+      id: "searchList",
+      title: "搜索 B站影视",
+      functionName: "searchList",
+      type: "video",
+      params: [
+        { name: "keyword", title: "影视名称", type: "input" },
+        { name: "page", title: "页码", type: "page" },
+      ],
+    },
     {
       id: "loadResource",
       title: "加载资源",
@@ -36,7 +46,7 @@ WidgetMetadata = {
   ],
   search: {
     title: "搜索 B站影视",
-    functionName: "search",
+    functionName: "searchGlobal",
     params: [
       { name: "keyword", title: "影视名称", type: "input" },
       { name: "page", title: "页码", type: "page" },
@@ -351,7 +361,7 @@ function mapBilibiliSearchItem(row) {
   }
   var item = {
     id: pageUrl,
-    type: "url",
+    type: "link",
     mediaType: mediaType,
     title: cleanText(row.title || row.org_title),
     posterPath: httpsUrl(row.cover),
@@ -481,6 +491,14 @@ async function search(params = {}) {
   return items;
 }
 
+async function searchList(params = {}) {
+  return search(params);
+}
+
+async function searchGlobal(params = {}) {
+  return search(params);
+}
+
 function mapBilibiliEpisode(episode, index, mediaType, seasonId) {
   var pageUrl = httpsUrl(episode.link || episode.url) ||
     "https://www.bilibili.com/bangumi/play/ep" + String(episode.id || "");
@@ -494,7 +512,7 @@ function mapBilibiliEpisode(episode, index, mediaType, seasonId) {
   var route = bilibiliPlayRoute(seasonId, episode.id, episode.aid, episode.cid);
   var item = {
     id: pageUrl,
-    type: "url",
+    type: "link",
     mediaType: mediaType,
     title: title,
     backdropPath: httpsUrl(episode.cover),
@@ -516,9 +534,9 @@ function mapBilibiliEpisode(episode, index, mediaType, seasonId) {
 
 async function loadDetail(link) {
   var route = String(link || "");
-  if (route.indexOf("bilibili:") !== 0) return null;
+  if (route.indexOf("bilibili:") !== 0) return [];
   var seasonId = route.slice("bilibili:".length).trim();
-  if (!/^\d+$/.test(seasonId)) return null;
+  if (!/^\d+$/.test(seasonId)) return [];
 
   var cached = readCachedDetail(route);
   try {
@@ -541,7 +559,7 @@ async function loadDetail(link) {
     var rating = data.rating ? Number(data.rating.score || 0) : 0;
     var detail = {
       id: pageUrl,
-      type: "url",
+      type: "link",
       mediaType: mediaType,
       title: cleanText(data.title || (cached && cached.title)),
       posterPath: httpsUrl(data.cover || (cached && cached.posterPath)),
@@ -557,14 +575,19 @@ async function loadDetail(link) {
     };
     if (rating) detail.rating = rating;
     cacheDetail(route, detail);
-    return detail;
+    return [detail];
   } catch (error) {
     if (cached) {
       console.warn("[B站详情] 平台详情暂不可用，继续使用当前搜索结果:", error.message || error);
-      return cached;
+      return [cached];
     }
     console.error("[B站详情] 加载失败:", error.message || error);
-    throw error;
+    return [{
+      id: "bilibili-detail-error-" + seasonId,
+      type: "text",
+      title: "B站详情加载失败",
+      subTitle: error && error.message ? error.message : String(error),
+    }];
   }
 }
 
