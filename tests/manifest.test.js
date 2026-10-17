@@ -7,9 +7,10 @@ const vm = require("node:vm");
 
 const root = path.resolve(__dirname, "..");
 const manifests = [
-  { filename: "forward-widgets.fwd", expectedIds: ["forward.bilibili.tv.search", "forward.iqiyi.tv.search"] },
+  { filename: "forward-widgets.fwd", expectedIds: ["forward.bilibili.tv.search", "forward.iqiyi.tv.search", "forward.javranking.rankings"] },
   { filename: "bilibili.fwd", expectedIds: ["forward.bilibili.tv.search"] },
   { filename: "iqiyi.fwd", expectedIds: ["forward.iqiyi.tv.search"] },
+  { filename: "javranking.fwd", expectedIds: ["forward.javranking.rankings"] },
 ];
 
 for (const manifestSpec of manifests) {

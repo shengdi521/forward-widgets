@@ -6,6 +6,10 @@
 
 var JAVRANKING_ORIGIN = "https://javranking.cc";
 var JAVRANKING_BASE = JAVRANKING_ORIGIN + "/zh-hans";
+var JAVRANKING_SEARCH_INDEX = JAVRANKING_BASE + "/search-index.json";
+var cachedJavRankingTitles = null;
+var cachedJavRankingTitlesAt = 0;
+var JAVRANKING_TITLE_CACHE_TTL = 30 * 60 * 1000;
 
 var JAVRANKING_RANKINGS = [
   { title: "DMM 本周热销榜", path: "/rankings/dmm-weekly/" },
@@ -226,12 +230,90 @@ function parseCode(text) {
   return match ? match[0] : "";
 }
 
-function rankingItem(link, title, image, cardText, rankingTitle) {
+function videoIdFromUrl(value) {
+  var match = String(value || "").match(/\/videos\/(\d+)(?:\/|$)/i);
+  return match ? match[1] : "";
+}
+
+function isGenericRankingTitle(value) {
+  var text = cleanText(value).replace(/[：:|｜·•]+$/g, "").trim();
+  if (!text) return true;
+  if (/^即将发布(?:无码|有码)?$/i.test(text)) return true;
+  if (/^(?:无码|有码|FC2|JAVDB|DMM|排行榜|排名|详情|播放|观看|预览|打开|更多)$/i.test(text)) return true;
+  return false;
+}
+
+function normalizeRankingTitle(value) {
+  var text = cleanText(value);
+  if (!text || isGenericRankingTitle(text)) return "";
+  text = text.replace(/^\s*(?:#?\d+[.)]?\s*)+/, "").trim();
+  text = text.replace(/\s+(?:即将发布(?:无码|有码)?|无码|有码)$/i, "").trim();
+  return isGenericRankingTitle(text) ? "" : text;
+}
+
+function rankingTitleFromNode($, node, container) {
+  var attributes = ["title", "aria-label", "data-title", "data-name", "data-video-title"];
+  for (var attributeIndex = 0; attributeIndex < attributes.length; attributeIndex += 1) {
+    var value = normalizeRankingTitle($(node).attr(attributes[attributeIndex]));
+    if (value) return value;
+  }
+
+  var titleSelectors = [
+    "h1", "h2", "h3", "h4", ".title", ".video-title", ".video-title-text",
+    ".name", ".card-title", "[data-title]", "[data-name]",
+  ];
+  for (var selectorIndex = 0; selectorIndex < titleSelectors.length; selectorIndex += 1) {
+    var titleNode = $(container).find(titleSelectors[selectorIndex]).first();
+    if (!titleNode || !titleNode.length) continue;
+    var title = normalizeRankingTitle(titleNode.attr("title") || titleNode.attr("data-title") || titleNode.text());
+    if (title) return title;
+  }
+
+  var image = $(container).find("img").first();
+  if (image && image.length) {
+    var alt = normalizeRankingTitle(image.attr("alt") || image.attr("title"));
+    if (alt) return alt;
+  }
+
+  return normalizeRankingTitle($(node).text());
+}
+
+async function loadJavRankingTitles() {
+  var now = Date.now();
+  if (cachedJavRankingTitles && now - cachedJavRankingTitlesAt < JAVRANKING_TITLE_CACHE_TTL) {
+    return cachedJavRankingTitles;
+  }
+  try {
+    var response = await Widget.http.get(JAVRANKING_SEARCH_INDEX, {
+      headers: { Accept: "application/json, text/plain;q=0.9, */*;q=0.8" },
+    });
+    var data = response && response.data;
+    if (typeof data === "string") data = JSON.parse(data);
+    var videos = data && Array.isArray(data.videos) ? data.videos : [];
+    var titles = {};
+    for (var index = 0; index < videos.length; index += 1) {
+      var video = videos[index] || {};
+      var id = String(video.videoId || video.id || "");
+      var title = normalizeRankingTitle(video.title);
+      if (id && title) titles[id] = title;
+    }
+    if (!Object.keys(titles).length) return null;
+    cachedJavRankingTitles = titles;
+    cachedJavRankingTitlesAt = now;
+    return titles;
+  } catch (error) {
+    console.warn("[JavRanking] 标题索引不可用，回退页面标题:", error && error.message ? error.message : error);
+    return null;
+  }
+}
+
+function rankingItem(link, title, image, cardText, rankingTitle, titleMap) {
   var href = absoluteUrl(link);
   var rank = parseRank(cardText);
   var score = parseScore(cardText);
   var code = parseCode(cardText) || parseCode(title);
-  var displayTitle = cleanText(title) || code || (rank ? "第 " + rank + " 名" : "JavRanking 条目");
+  var canonicalTitle = titleMap && titleMap[videoIdFromUrl(href)];
+  var displayTitle = normalizeRankingTitle(canonicalTitle) || normalizeRankingTitle(title) || code || (rank ? "第 " + rank + " 名" : "JavRanking 条目");
   var description = [];
   if (code && displayTitle.indexOf(code) < 0) description.push("番号：" + code);
   if (rank) description.push("排名：#" + rank);
@@ -252,7 +334,7 @@ function rankingItem(link, title, image, cardText, rankingTitle) {
   };
 }
 
-function parseRankingHtml(body, rankingTitle) {
+function parseRankingHtml(body, rankingTitle, titleMap) {
   var $ = Widget.html.load(body);
   var items = [];
   var seen = {};
@@ -262,14 +344,14 @@ function parseRankingHtml(body, rankingTitle) {
     seen[href] = true;
     var container = itemContainer($, node);
     var cardText = cleanText(container.text());
-    var title = cleanText($(node).text());
+    var title = rankingTitleFromNode($, node, container);
     var image = firstImage($, container);
-    items.push(rankingItem(href, title, image, cardText, rankingTitle));
+    items.push(rankingItem(href, title, image, cardText, rankingTitle, titleMap));
   });
   return items;
 }
 
-function parseRankingMarkdown(body, rankingTitle) {
+function parseRankingMarkdown(body, rankingTitle, titleMap) {
   var items = [];
   var seen = {};
   var lines = String(body || "").split(/\r?\n/);
@@ -280,7 +362,7 @@ function parseRankingMarkdown(body, rankingTitle) {
     var href = absoluteUrl(match[2]);
     if (seen[href]) continue;
     seen[href] = true;
-    items.push(rankingItem(href, match[1], "", line, rankingTitle));
+    items.push(rankingItem(href, match[1], "", line, rankingTitle, titleMap));
   }
   return items;
 }
@@ -301,16 +383,17 @@ async function loadRanking(params) {
     var ranking = rankingByPath(params.ranking);
     var url = addPageQuery(JAVRANKING_BASE + ranking.path, params);
     var body = await requestPage(url);
+    var titleMap = await loadJavRankingTitles();
     var items = [];
     try {
-      items = parseRankingHtml(body, ranking.title);
+      items = parseRankingHtml(body, ranking.title, titleMap);
     } catch (error) {
       console.warn("[JavRanking] HTML 榜单解析失败，尝试 Markdown:", error && error.message ? error.message : error);
     }
     if (!items.length) {
       var markdownUrl = addPageQuery(JAVRANKING_BASE + ranking.path.replace(/\/$/, ".md"), params);
       try {
-        items = parseRankingMarkdown(await requestPage(markdownUrl), ranking.title);
+        items = parseRankingMarkdown(await requestPage(markdownUrl), ranking.title, titleMap);
       } catch (markdownError) {
         if (body) throw markdownError;
       }
@@ -341,11 +424,13 @@ function parseDuration(text) {
   return match ? Number(match[1]) : undefined;
 }
 
-function parseDetailHtml(body, href) {
+function parseDetailHtml(body, href, titleMap) {
   var $ = Widget.html.load(body);
   var main = $("main").first();
   if (!main || !main.length) main = $("body");
-  var title = cleanText(main.find("h1").first().text()) || cleanText($("h1").first().text());
+  var title = normalizeRankingTitle(titleMap && titleMap[videoIdFromUrl(href)]) ||
+    normalizeRankingTitle(main.find("h1").first().text()) ||
+    normalizeRankingTitle($("h1").first().text());
   var text = cleanText(main.text());
   var image = firstImage($, main);
   var backdropPaths = [];
@@ -416,10 +501,11 @@ function parseDetailHtml(body, href) {
   };
 }
 
-function parseDetailMarkdown(body, href) {
+function parseDetailMarkdown(body, href, titleMap) {
   var text = String(body || "");
   var titleMatch = text.match(/^#\s+(.+)$/m);
-  var title = titleMatch ? cleanText(titleMatch[1]) : "JavRanking 影片详情";
+  var title = normalizeRankingTitle(titleMap && titleMap[videoIdFromUrl(href)]) ||
+    (titleMatch ? normalizeRankingTitle(titleMatch[1]) : "") || "JavRanking 影片详情";
   var imageMatch = text.match(/!\[[^\]]*\]\(([^)]+)\)/);
   var code = parseCode(text);
   return {
@@ -446,13 +532,14 @@ async function searchList(params) {
     var url = JAVRANKING_BASE + "/search/?q=" + escapeQuery(keyword);
     if (page > 1) url += "&page=" + page;
     var body = await requestPage(url);
+    var titleMap = await loadJavRankingTitles();
     var items = [];
     try {
-      items = parseRankingHtml(body, "JavRanking 搜索");
+      items = parseRankingHtml(body, "JavRanking 搜索", titleMap);
     } catch (error) {
       console.warn("[JavRanking] HTML 搜索解析失败:", error && error.message ? error.message : error);
     }
-    if (!items.length) items = parseRankingMarkdown(body, "JavRanking 搜索");
+    if (!items.length) items = parseRankingMarkdown(body, "JavRanking 搜索", titleMap);
     if (!items.length) return buildStatusItem("no-search-result", "没有搜索结果", "JavRanking 没有返回匹配影片。");
     return items;
   } catch (error) {
@@ -469,13 +556,14 @@ async function loadDetail(link) {
     var href = absoluteUrl(link);
     if (!/\/zh-hans\/videos\/\d+\/?(?:\?.*)?$/i.test(href)) return null;
     var body = await requestPage(href);
+    var titleMap = await loadJavRankingTitles();
     try {
-      var detail = parseDetailHtml(body, href);
+      var detail = parseDetailHtml(body, href, titleMap);
       if (detail.title || detail.posterPath || detail.peoples.length) return [detail];
     } catch (error) {
       console.warn("[JavRanking] HTML 详情解析失败，尝试 Markdown:", error && error.message ? error.message : error);
     }
-    return [parseDetailMarkdown(await requestPage(href.replace(/\/?(?:\?.*)?$/, ".md")), href)];
+    return [parseDetailMarkdown(await requestPage(href.replace(/\/?(?:\?.*)?$/, ".md")), href, titleMap)];
   } catch (error) {
     return buildStatusItem("detail", "详情请求失败", error && error.message ? error.message : String(error));
   }

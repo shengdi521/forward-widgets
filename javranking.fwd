@@ -6,7 +6,7 @@
     {
       "id": "forward.javranking.rankings",
       "title": "JavRanking 排行榜",
-      "description": "18 个独立榜单分类入口；每个榜单支持有码/无码/FC2 制式筛选、发行状态、排序、分页、站内搜索和条目详情。榜单本身不会作为影片返回。网站防护拒绝请求时会显示明确提示。仅限成年人使用。",
+      "description": "将 JavRanking 的 18 个榜单作为独立分类入口；打开具体榜单后再获取该榜单中的影片链接，并支持搜索和条目详情。仅限成年人使用。",
       "requiredVersion": "0.0.1",
       "version": "1.1.0",
       "author": "Custom",
