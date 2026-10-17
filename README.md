@@ -15,6 +15,14 @@ https://raw.githubusercontent.com/shengdi521/forward-widgets/main/javranking.fwd
 
 建议先分别添加上述三个单平台订阅，便于独立验证。合并订阅仍保留在 `forward-widgets.fwd`。
 
+如果使用 Rex，请直接添加下面的 JS 模块地址：
+
+```text
+https://raw.githubusercontent.com/shengdi521/forward-widgets/main/widgets/javranking-rex.js
+```
+
+Rex 版本使用 `type: "video"` 的榜单和搜索模块，并提供 `loadResource` 播放源模块。18 个榜单是独立分类入口，选择榜单后才请求影片条目。
+
 JavRanking 订阅会把 18 个榜单显示为 18 个独立分类入口。打开某个榜单后，模块才会请求并返回该榜单中的影片条目；榜单名称本身不会作为视频返回。每个榜单都保留制式、发行状态、排序和分页参数。
 
 搜索只通过 Forward 原生顶层搜索注册关键词与分页参数，避免普通模块参数页在 iPhone/iPad 键盘“完成”时丢失输入。B站搜索在 WBI 风控失败时会自动回退兼容接口，并只在搜索页携带少量可直接播放分集，避免超长剧集列表导致客户端丢弃整页结果；详情页仍会加载完整分集。电影、电视剧、动漫、综艺和纪录片仍会在同一搜索结果中返回。
