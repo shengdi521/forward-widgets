@@ -522,4 +522,3 @@ async function loadResource(params) {
     return [];
   }
 }
-
